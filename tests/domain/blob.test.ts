@@ -5,6 +5,7 @@ import {
   createServerUrl,
   createSha256,
   parseBlobDescriptor,
+  parseBlobDescriptorList,
 } from "../../src/domain/blob.ts"
 
 const validDescriptor = {
@@ -117,6 +118,25 @@ Deno.test("parseBlobDescriptor accepts a numeric uploaded timestamp", () => {
 
 Deno.test("parseBlobDescriptor rejects a string uploaded timestamp", () => {
   const result = parseBlobDescriptor({ ...validDescriptor, uploaded: "2024-01-01T00:00:00Z" })
+  assert(!result.success)
+  assertEquals(result.error.tag, "ValidationError")
+})
+
+Deno.test("parseBlobDescriptorList brands every descriptor in the array", () => {
+  const result = parseBlobDescriptorList([validDescriptor, { ...validDescriptor, sha256: "b".repeat(64) }])
+  assert(result.success)
+  assertEquals(result.value.length, 2)
+  assertEquals(result.value[0]?.sha256, "a".repeat(64))
+})
+
+Deno.test("parseBlobDescriptorList rejects a non-array value", () => {
+  const result = parseBlobDescriptorList(validDescriptor)
+  assert(!result.success)
+  assertEquals(result.error.tag, "ValidationError")
+})
+
+Deno.test("parseBlobDescriptorList fails on the first malformed element", () => {
+  const result = parseBlobDescriptorList([validDescriptor, { ...validDescriptor, sha256: "not-hex" }])
   assert(!result.success)
   assertEquals(result.error.tag, "ValidationError")
 })

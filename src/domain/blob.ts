@@ -53,6 +53,13 @@ export const buildListQueryString = (query: ListBlobsQuery): string => {
 export const computeSha256 = async (data: ArrayBuffer): Promise<Result<Sha256, ValidationError>> =>
   createSha256(await computeSha256Core(data))
 
+/**
+ * Validate an unknown value (e.g. a parsed JSON object from a server response or a persisted cache)
+ * as a {@link BlobDescriptor}. The `sha256` field is branded and lowercase-normalised through the same
+ * {@link createSha256} path, so a successful result's `sha256` is a ready-to-use {@link Sha256}; a
+ * non-hex hash or any missing/mistyped field fails the parse. This is the only validated
+ * `unknown → BlobDescriptor` path — use it instead of casting raw input.
+ */
 export const parseBlobDescriptor = (value: unknown): Result<BlobDescriptor, ValidationError> => {
   if (!isRecord(value)) {
     return failure(new ValidationError("malformed Blossom blob descriptor"))
@@ -70,6 +77,11 @@ export const parseBlobDescriptor = (value: unknown): Result<BlobDescriptor, Vali
   return ok({ url: value.url, sha256, size: value.size, type: value.type, uploaded: value.uploaded })
 }
 
+/**
+ * Validate an unknown value as an array of {@link BlobDescriptor}s, applying {@link parseBlobDescriptor}
+ * to each element. Returns the first element's failure if any element is malformed, otherwise the full
+ * branded list. Used to parse a server's `GET /list` body, or a persisted list rehydrated from storage.
+ */
 export const parseBlobDescriptorList = (
   value: unknown,
 ): Result<ReadonlyArray<BlobDescriptor>, ValidationError> => {

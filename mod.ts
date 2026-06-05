@@ -13,8 +13,16 @@ export type { BlossomError } from "./src/domain/errors.ts"
 export { ValidationError } from "./src/domain/errors.ts"
 
 export { createUnsignedAuthEvent } from "./src/domain/auth.ts"
+export { parseServerList } from "./src/domain/server-list.ts"
 export { createUnsignedReportEvent } from "./src/domain/report.ts"
-export { buildListQueryString, computeSha256, createServerUrl, createSha256 } from "./src/domain/blob.ts"
+export {
+  buildListQueryString,
+  computeSha256,
+  createServerUrl,
+  createSha256,
+  parseBlobDescriptor,
+  parseBlobDescriptorList,
+} from "./src/domain/blob.ts"
 
 export type { BlossomDeps, BlossomSigner } from "./src/application/ports.ts"
 export { adaptSigner } from "./src/infrastructure/signer-adapter.ts"
