@@ -28,11 +28,13 @@ const serverUrlTools = createBrand<ServerUrl, "InvalidServerUrlError">({
   normalise: (raw) => URL.parse(raw)?.origin ?? raw,
 })
 
+/** Validate and brand a raw string as a {@link Sha256} (64 lowercase hex characters), returning `Result<Sha256, ValidationError>`. Use this instead of casting an untrusted hash. */
 export const createSha256 = (raw: string): Result<Sha256, ValidationError> => {
   const sha256 = sha256Tools.tryParse(raw)
   return sha256 !== null ? ok(sha256) : failure(new ValidationError("SHA-256 hash must be 64 hexadecimal characters"))
 }
 
+/** Validate and brand a raw string as a {@link ServerUrl}, normalising it to its http/https origin (scheme + host, no path). Returns `Result<ServerUrl, ValidationError>`. */
 export const createServerUrl = (raw: string): Result<ServerUrl, ValidationError> => {
   const serverUrl = serverUrlTools.tryParse(raw)
   return serverUrl !== null
@@ -40,6 +42,7 @@ export const createServerUrl = (raw: string): Result<ServerUrl, ValidationError>
     : failure(new ValidationError("Server URL must be a valid http or https origin"))
 }
 
+/** Serialise a {@link ListBlobsQuery} into a URL query string with a leading `?`, or `""` when no fields are set. Used by {@link createListBlobs}. */
 export const buildListQueryString = (query: ListBlobsQuery): string => {
   const params = new URLSearchParams()
   if (query.cursor !== undefined) params.set("cursor", query.cursor)
@@ -50,6 +53,7 @@ export const buildListQueryString = (query: ListBlobsQuery): string => {
   return str.length > 0 ? `?${str}` : ""
 }
 
+/** Compute the {@link Sha256} of an `ArrayBuffer`, branding the digest through the same {@link createSha256} path so there is one validation path. Returns `Result<Sha256, ValidationError>`. */
 export const computeSha256 = async (data: ArrayBuffer): Promise<Result<Sha256, ValidationError>> =>
   createSha256(await computeSha256Core(data))
 

@@ -10,6 +10,7 @@ interface DeleteBlobInput {
   readonly sha256: Sha256
 }
 
+/** Build the delete use-case: `DELETE /<sha256>` with a `delete` auth event. Resolves to `void` on success. */
 export const createDeleteBlob = (
   deps: BlossomDeps,
 ): (input: DeleteBlobInput) => Promise<Result<void, BlossomError>> => {

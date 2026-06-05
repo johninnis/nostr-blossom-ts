@@ -17,6 +17,7 @@ interface AuthorisedRequestInput {
   readonly hashes?: ReadonlyArray<Sha256>
 }
 
+/** Internal: the single boundary every authenticated use-case builds on — sign the kind-24242 auth event, attach it as the `Authorization: Nostr` header, and issue the HTTP request. */
 export const createAuthorisedRequest = (
   deps: BlossomDeps,
 ): (input: AuthorisedRequestInput) => Promise<Result<HttpResponse, BlossomError>> => {

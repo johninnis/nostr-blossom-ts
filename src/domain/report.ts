@@ -10,6 +10,11 @@ interface ReportInput {
   readonly createdAt?: number
 }
 
+/**
+ * Build the unsigned kind-1984 NIP-56 report event referencing a blob by hash
+ * (`["x", <sha256>, <reportType>]`), with `reason` as the content. `createdAt` defaults to the system
+ * clock. Signed and sent as the body of `PUT /report` by {@link createReportBlob}.
+ */
 export const createUnsignedReportEvent = (input: ReportInput): UnsignedEvent => ({
   kind: REPORT_EVENT_KIND,
   content: input.reason,

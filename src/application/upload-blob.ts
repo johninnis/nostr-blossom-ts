@@ -14,6 +14,7 @@ interface UploadInput {
 
 type UploadFn = (input: UploadInput) => Promise<Result<BlobDescriptor, BlossomError>>
 
+/** Build the upload use-case: hash a `File`, sign an `upload`/`media` auth event, and `PUT` it to `/upload` (or `/media` when `input.endpoint === "media"`). Resolves to the stored {@link BlobDescriptor}. */
 export const createUpload = (deps: BlossomDeps): UploadFn => {
   const authorisedRequest = createAuthorisedRequest(deps)
 

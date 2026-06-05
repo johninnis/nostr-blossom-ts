@@ -12,6 +12,7 @@ interface ListBlobsInput {
   readonly query?: ListBlobsQuery
 }
 
+/** Build the list use-case: `GET /list/<pubkey>` with an optional {@link ListBlobsQuery}, returning the server's blobs as a validated `ReadonlyArray<BlobDescriptor>`. */
 export const createListBlobs = (
   deps: BlossomDeps,
 ): (input: ListBlobsInput) => Promise<Result<ReadonlyArray<BlobDescriptor>, BlossomError>> => {

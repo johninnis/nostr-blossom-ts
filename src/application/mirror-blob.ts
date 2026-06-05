@@ -11,6 +11,7 @@ interface MirrorBlobInput {
   readonly sourceUrl: string
 }
 
+/** Build the mirror use-case (BUD-04): `PUT /mirror` with a `{ url }` body and an `upload` auth event, asking the server to fetch and store the blob at `sourceUrl`. Resolves to the stored {@link BlobDescriptor}. */
 export const createMirrorBlob = (
   deps: BlossomDeps,
 ): (input: MirrorBlobInput) => Promise<Result<BlobDescriptor, BlossomError>> => {

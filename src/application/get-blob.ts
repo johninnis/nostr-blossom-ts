@@ -10,11 +10,13 @@ interface GetBlobInput {
   readonly sha256: Sha256
 }
 
+/** The result of {@link createGetBlob}: the blob body as a `Blob`, plus the `contentType` read from the response header. */
 export interface BlobResponse {
   readonly data: Blob
   readonly contentType: string
 }
 
+/** Build the get use-case: `GET /<sha256>` with a `get` auth event, returning the body as a {@link BlobResponse}. */
 export const createGetBlob = (
   deps: BlossomDeps,
 ): (input: GetBlobInput) => Promise<Result<BlobResponse, BlossomError>> => {

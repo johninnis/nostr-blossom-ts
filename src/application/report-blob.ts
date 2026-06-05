@@ -12,6 +12,7 @@ interface ReportBlobInput {
   readonly reason: string
 }
 
+/** Build the report use-case (BUD-09): sign a kind-1984 NIP-56 report and `PUT` it to `/report` as the request body. This endpoint takes no kind-24242 auth header; it is a server-side report, not a Nostr-relay publish. Resolves to `void` on success. */
 export const createReportBlob = (
   deps: BlossomDeps,
 ): (input: ReportBlobInput) => Promise<Result<void, BlossomError>> => {

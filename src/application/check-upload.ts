@@ -12,6 +12,7 @@ interface CheckUploadInput {
   readonly contentType: string
 }
 
+/** Build the check-upload use-case (BUD-06): `HEAD /upload` with `X-SHA-256`/`X-Content-Length`/`X-Content-Type` headers, asking whether an upload would be accepted before sending the body. Resolves to `void` when the server would accept it. */
 export const createCheckUpload = (
   deps: BlossomDeps,
 ): (input: CheckUploadInput) => Promise<Result<void, BlossomError>> => {

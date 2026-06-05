@@ -1,3 +1,14 @@
+/**
+ * TypeScript client for the [Blossom](https://github.com/hzrd149/blossom) media-server protocol:
+ * upload, list, delete, mirror, download, head, check, and report blobs against any Blossom-compatible
+ * server. SHA-256 content addressing, kind-24242 authorisation events, and kind-1984 NIP-56 reports.
+ *
+ * The package is branded domain primitives plus pure use-case factories over injected `BlossomSigner`
+ * and `HttpClient` ports — it owns no state, performs no caching, and never calls `globalThis.fetch`.
+ *
+ * @module
+ */
+
 export type {
   AuthAction,
   BlobDescriptor,

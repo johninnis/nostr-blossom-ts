@@ -10,6 +10,7 @@ interface HeadBlobInput {
   readonly sha256: Sha256
 }
 
+/** Build the head use-case: `HEAD /<sha256>` with a `get` auth event, returning {@link BlobHeaders} (content type, and content length when the server reports it). */
 export const createHeadBlob = (
   deps: BlossomDeps,
 ): (input: HeadBlobInput) => Promise<Result<BlobHeaders, BlossomError>> => {
