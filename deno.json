@@ -1,6 +1,6 @@
 {
   "name": "@innis/nostr-blossom",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "description": "TypeScript client for the Blossom media-server protocol: upload, list, delete, mirror, download, head, check, and report blobs. SHA-256 addressing, kind 24242 auth events, Signer + HttpClient ports, Result-based.",
   "exports": "./mod.ts",
