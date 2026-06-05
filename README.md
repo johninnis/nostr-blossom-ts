@@ -1,5 +1,7 @@
 # @innis/nostr-blossom
 
+[![CI](https://github.com/johninnis/nostr-blossom-ts/actions/workflows/ci.yml/badge.svg)](https://github.com/johninnis/nostr-blossom-ts/actions/workflows/ci.yml)
+
 The [Blossom](https://github.com/hzrd149/blossom) media-server protocol: upload, list, delete, mirror, download, head, check, and report blobs against any Blossom-compatible server. SHA-256 content addressing, kind 24242 auth events, multi-server mirroring.
 
 The lib is domain primitives plus pure use-case factories, with a single infrastructure adapter (`adaptSigner`). It depends only on:
@@ -7,6 +9,12 @@ The lib is domain primitives plus pure use-case factories, with a single infrast
 - `@innis/nostr-core` — the `Signer` and `HttpClient` port types, kind constants, `Result`, NIP-98 `encodeAuthHeader`, and `computeSha256`.
 
 It owns no state, performs no caching, and never reaches `globalThis.fetch`. The application wires up the deps; this lib provides the protocol behaviour.
+
+## Install
+
+```sh
+deno add jsr:@innis/nostr-blossom
+```
 
 ## Public surface
 
