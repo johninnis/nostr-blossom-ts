@@ -1,6 +1,11 @@
 import { assert, assertEquals } from "@std/assert"
 import { createGetBlob } from "../../src/application/get-blob.ts"
-import { createFakeHttpClient, createFakeSigner, createFakeSuccessResponse } from "./helpers.ts"
+import {
+  createCapturingHttpClient,
+  createFakeHttpClient,
+  createFakeSigner,
+  createFakeSuccessResponse,
+} from "./helpers.ts"
 import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
 
 const serverResult = createServerUrl("https://blossom.example.com")
@@ -44,4 +49,23 @@ Deno.test("getBlob returns server error on 404", async () => {
 
   assert(!result.success)
   assertEquals(result.error.tag, "ServerError")
+})
+
+Deno.test("getBlob forwards timeoutMs and signal to the http client", async () => {
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, "x"))
+  const getBlob = createGetBlob({ signer: createFakeSigner(), httpClient: captured.client })
+  const controller = new AbortController()
+
+  const result = await getBlob({
+    serverUrl: testServerUrl,
+    sha256: testHash,
+    timeoutMs: 5000,
+    signal: controller.signal,
+  })
+
+  assert(result.success)
+  const request = captured.requests[0]
+  assert(request)
+  assertEquals(request.timeoutMs, 5000)
+  assertEquals(request.signal, controller.signal)
 })

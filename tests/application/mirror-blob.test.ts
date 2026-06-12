@@ -1,6 +1,11 @@
 import { assert, assertEquals } from "@std/assert"
 import { createMirrorBlob } from "../../src/application/mirror-blob.ts"
-import { createFakeHttpClient, createFakeSigner, createFakeSuccessResponse } from "./helpers.ts"
+import {
+  createCapturingHttpClient,
+  createFakeHttpClient,
+  createFakeSigner,
+  createFakeSuccessResponse,
+} from "./helpers.ts"
 import { createServerUrl } from "../../src/domain/blob.ts"
 
 const testServerUrlResult = createServerUrl("https://blossom.example.com")
@@ -74,4 +79,30 @@ Deno.test("mirrorBlob rejects a descriptor with a malformed hash", async () => {
 
   assert(!result.success)
   assertEquals(result.error.tag, "ValidationError")
+})
+
+Deno.test("mirrorBlob forwards timeoutMs and signal to the http client", async () => {
+  const descriptor = {
+    url: "https://blossom.example.com/mirrored.png",
+    sha256: "c".repeat(64),
+    size: 512,
+    type: "image/png",
+    uploaded: 1704067200,
+  }
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, JSON.stringify(descriptor)))
+  const mirrorBlob = createMirrorBlob({ signer: createFakeSigner(), httpClient: captured.client })
+  const controller = new AbortController()
+
+  const result = await mirrorBlob({
+    serverUrl: testServerUrl,
+    sourceUrl: "https://example.com/image.png",
+    timeoutMs: 5000,
+    signal: controller.signal,
+  })
+
+  assert(result.success)
+  const request = captured.requests[0]
+  assert(request)
+  assertEquals(request.timeoutMs, 5000)
+  assertEquals(request.signal, controller.signal)
 })

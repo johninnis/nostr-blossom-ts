@@ -8,6 +8,8 @@ import { createAuthorisedRequest } from "./authorised-request.ts"
 interface DeleteBlobInput {
   readonly serverUrl: ServerUrl
   readonly sha256: Sha256
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 /** Build the delete use-case: `DELETE /<sha256>` with a `delete` auth event. Resolves to `void` on success. */
@@ -24,6 +26,8 @@ export const createDeleteBlob = (
       method: "DELETE",
       path: `/${input.sha256}`,
       hashes: [input.sha256],
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     })
 
     if (!response.success) return response

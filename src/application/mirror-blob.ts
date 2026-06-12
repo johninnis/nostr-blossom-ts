@@ -9,6 +9,8 @@ import { parseJsonResponse } from "./parse-response.ts"
 interface MirrorBlobInput {
   readonly serverUrl: ServerUrl
   readonly sourceUrl: string
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 /** Build the mirror use-case (BUD-04): `PUT /mirror` with a `{ url }` body and an `upload` auth event, asking the server to fetch and store the blob at `sourceUrl`. Resolves to the stored {@link BlobDescriptor}. */
@@ -26,6 +28,8 @@ export const createMirrorBlob = (
       path: "/mirror",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: input.sourceUrl }),
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     })
 
     return parseJsonResponse(response, parseBlobDescriptor)

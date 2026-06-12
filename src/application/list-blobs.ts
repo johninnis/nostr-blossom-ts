@@ -10,6 +10,8 @@ interface ListBlobsInput {
   readonly serverUrl: ServerUrl
   readonly pubkey: PublicKey
   readonly query?: ListBlobsQuery
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 /** Build the list use-case: `GET /list/<pubkey>` with an optional {@link ListBlobsQuery}, returning the server's blobs as a validated `ReadonlyArray<BlobDescriptor>`. */
@@ -27,6 +29,8 @@ export const createListBlobs = (
       content: "List Blobs",
       method: "GET",
       path: `/list/${input.pubkey}${queryString}`,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     })
 
     return parseJsonResponse(response, parseBlobDescriptorList)

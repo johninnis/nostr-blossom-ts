@@ -8,6 +8,8 @@ import { createAuthorisedRequest } from "./authorised-request.ts"
 interface HeadBlobInput {
   readonly serverUrl: ServerUrl
   readonly sha256: Sha256
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 /** Build the head use-case: `HEAD /<sha256>` with a `get` auth event, returning {@link BlobHeaders} (content type, and content length when the server reports it). */
@@ -24,6 +26,8 @@ export const createHeadBlob = (
       method: "HEAD",
       path: `/${input.sha256}`,
       hashes: [input.sha256],
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     })
 
     if (!response.success) return response

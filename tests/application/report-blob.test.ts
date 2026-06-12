@@ -62,3 +62,17 @@ Deno.test("reportBlob returns server error on 500", async () => {
   assert(!result.success)
   assertEquals(result.error.tag, "ServerError")
 })
+
+Deno.test("reportBlob forwards timeoutMs and signal to the http client", async () => {
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
+  const reportBlob = createReportBlob({ signer: createFakeSigner(), httpClient: captured.client })
+  const controller = new AbortController()
+
+  const result = await reportBlob({ ...input, timeoutMs: 5000, signal: controller.signal })
+
+  assert(result.success)
+  const request = captured.requests[0]
+  assert(request)
+  assertEquals(request.timeoutMs, 5000)
+  assertEquals(request.signal, controller.signal)
+})

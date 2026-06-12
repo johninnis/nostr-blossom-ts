@@ -10,6 +10,8 @@ interface ReportBlobInput {
   readonly sha256: Sha256
   readonly reportType: ReportType
   readonly reason: string
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 /** Build the report use-case (BUD-09): sign a kind-1984 NIP-56 report and `PUT` it to `/report` as the request body. This endpoint takes no kind-24242 auth header; it is a server-side report, not a Nostr-relay publish. Resolves to `void` on success. */
@@ -25,6 +27,8 @@ export const createReportBlob = (
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(signResult.value),
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     }
 
     const response = await deps.httpClient.request(request)

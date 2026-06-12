@@ -8,6 +8,8 @@ import { createAuthorisedRequest } from "./authorised-request.ts"
 interface GetBlobInput {
   readonly serverUrl: ServerUrl
   readonly sha256: Sha256
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 /** The result of {@link createGetBlob}: the blob body as a `Blob`, plus the `contentType` read from the response header. */
@@ -30,6 +32,8 @@ export const createGetBlob = (
       method: "GET",
       path: `/${input.sha256}`,
       hashes: [input.sha256],
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     })
 
     if (!response.success) return response

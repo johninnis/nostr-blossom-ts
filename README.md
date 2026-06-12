@@ -66,7 +66,7 @@ Its contract is what makes the use-cases correct: **HTTP status `>= 400` → `Fa
 
 ### Use-case factories — `application/`
 
-Each takes `BlossomDeps` and returns a function `(input) => Promise<Result<T, BlossomError>>`:
+Each takes `BlossomDeps` and returns a function `(input) => Promise<Result<T, BlossomError>>`. Every input accepts optional `timeoutMs` / `signal` abort controls, forwarded verbatim to the `HttpClient` (`timeoutMs` caps the headers exchange; `signal` aborts the in-flight call):
 
 - **`createUpload`** — `PUT /upload` (or `PUT /media` when `input.endpoint === "media"`, Blossom's image-transform endpoint). Hashes the file, signs an `upload`/`media` auth event, returns `BlobDescriptor`.
 - **`createListBlobs`** — `GET /list/<pubkey>`. Returns `ReadonlyArray<BlobDescriptor>`.

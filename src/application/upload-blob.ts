@@ -10,6 +10,8 @@ interface UploadInput {
   readonly serverUrl: ServerUrl
   readonly file: File
   readonly endpoint?: "upload" | "media"
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 type UploadFn = (input: UploadInput) => Promise<Result<BlobDescriptor, BlossomError>>
@@ -37,6 +39,8 @@ export const createUpload = (deps: BlossomDeps): UploadFn => {
       },
       body: buffer,
       hashes: [sha256],
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     })
 
     return parseJsonResponse(response, parseBlobDescriptor)

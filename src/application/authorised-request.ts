@@ -15,6 +15,8 @@ interface AuthorisedRequestInput {
   readonly headers?: Readonly<Record<string, string>>
   readonly body?: BodyInit
   readonly hashes?: ReadonlyArray<Sha256>
+  readonly timeoutMs?: number
+  readonly signal?: AbortSignal
 }
 
 /** Internal: the single boundary every authenticated use-case builds on — sign the kind-24242 auth event, attach it as the `Authorization: Nostr` header, and issue the HTTP request. */
@@ -41,6 +43,8 @@ export const createAuthorisedRequest = (
         Authorization: encodeAuthHeader(signResult.value),
       },
       body: input.body,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
     }
 
     return httpClient.request(request)
