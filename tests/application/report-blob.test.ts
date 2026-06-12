@@ -6,7 +6,7 @@ import {
   createFakeHttpClient,
   createFakeSigner,
   createFakeSuccessResponse,
-} from "./helpers.ts"
+} from "../_helpers/fakes.ts"
 import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
 import { REPORT_EVENT_KIND } from "../../src/domain/types.ts"
 

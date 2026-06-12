@@ -5,7 +5,7 @@ import {
   createFakeHttpClient,
   createFakeSigner,
   createFakeSuccessResponse,
-} from "./helpers.ts"
+} from "../_helpers/fakes.ts"
 import { createServerUrl } from "../../src/domain/blob.ts"
 
 const testServerUrlResult = createServerUrl("https://blossom.example.com")
