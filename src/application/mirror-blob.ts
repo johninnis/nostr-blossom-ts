@@ -1,7 +1,7 @@
 import type { Result } from "@innis/nostr-core"
 import type { BlossomError } from "../domain/errors.ts"
 import { parseBlobDescriptor } from "../domain/blob.ts"
-import type { BlobDescriptor, ServerUrl } from "../domain/types.ts"
+import type { BlobDescriptor, ServerUrl, Sha256 } from "../domain/types.ts"
 import type { BlossomDeps } from "./ports.ts"
 import { createAuthorisedRequest } from "./authorised-request.ts"
 import { parseJsonResponse } from "./parse-response.ts"
@@ -9,11 +9,12 @@ import { parseJsonResponse } from "./parse-response.ts"
 interface MirrorBlobInput {
   readonly serverUrl: ServerUrl
   readonly sourceUrl: string
+  readonly sha256: Sha256
   readonly timeoutMs?: number
   readonly signal?: AbortSignal
 }
 
-/** Build the mirror use-case (BUD-04): `PUT /mirror` with a `{ url }` body and an `upload` auth event, asking the server to fetch and store the blob at `sourceUrl`. Resolves to the stored {@link BlobDescriptor}. */
+/** Build the mirror use-case (BUD-04): `PUT /mirror` with a `{ url }` body and an `upload` auth event whose `x` tag carries `sha256`, asking the server to fetch and store the blob at `sourceUrl`. Resolves to the stored {@link BlobDescriptor}. */
 export const createMirrorBlob = (
   deps: BlossomDeps,
 ): (input: MirrorBlobInput) => Promise<Result<BlobDescriptor, BlossomError>> => {
@@ -28,6 +29,7 @@ export const createMirrorBlob = (
       path: "/mirror",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: input.sourceUrl }),
+      hashes: [input.sha256],
       timeoutMs: input.timeoutMs,
       signal: input.signal,
     })

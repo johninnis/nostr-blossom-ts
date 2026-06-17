@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "@std/assert"
+import { parseAuthHeader } from "@innis/nostr-core"
 import { createMirrorBlob } from "../../src/application/mirror-blob.ts"
 import {
   createCapturingHttpClient,
@@ -6,11 +7,15 @@ import {
   createFakeSigner,
   createFakeSuccessResponse,
 } from "../_helpers/fakes.ts"
-import { createServerUrl } from "../../src/domain/blob.ts"
+import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
 
 const testServerUrlResult = createServerUrl("https://blossom.example.com")
 assert(testServerUrlResult.success)
 const testServerUrl = testServerUrlResult.value
+
+const testSha256Result = createSha256("c".repeat(64))
+assert(testSha256Result.success)
+const testSha256 = testSha256Result.value
 
 Deno.test("mirrorBlob returns descriptor on success", async () => {
   const descriptor = {
@@ -29,6 +34,7 @@ Deno.test("mirrorBlob returns descriptor on success", async () => {
   const result = await mirrorBlob({
     serverUrl: testServerUrl,
     sourceUrl: "https://example.com/image.png",
+    sha256: testSha256,
   })
 
   assert(result.success)
@@ -52,6 +58,7 @@ Deno.test("mirrorBlob normalises an upper-case descriptor hash to lowercase", as
   const result = await mirrorBlob({
     serverUrl: testServerUrl,
     sourceUrl: "https://example.com/image.png",
+    sha256: testSha256,
   })
 
   assert(result.success)
@@ -75,10 +82,36 @@ Deno.test("mirrorBlob rejects a descriptor with a malformed hash", async () => {
   const result = await mirrorBlob({
     serverUrl: testServerUrl,
     sourceUrl: "https://example.com/image.png",
+    sha256: testSha256,
   })
 
   assert(!result.success)
   assertEquals(result.error.tag, "ValidationError")
+})
+
+Deno.test("mirrorBlob authorises the blob via an x tag carrying its sha256", async () => {
+  const descriptor = {
+    url: "https://blossom.example.com/mirrored.png",
+    sha256: "c".repeat(64),
+    size: 512,
+    type: "image/png",
+    uploaded: 1704067200,
+  }
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, JSON.stringify(descriptor)))
+  const mirrorBlob = createMirrorBlob({ signer: createFakeSigner(), httpClient: captured.client })
+
+  const result = await mirrorBlob({
+    serverUrl: testServerUrl,
+    sourceUrl: "https://example.com/image.png",
+    sha256: testSha256,
+  })
+
+  assert(result.success)
+  const authHeader = captured.requests[0]?.headers?.Authorization
+  assert(authHeader)
+  const authEvent = parseAuthHeader(authHeader)
+  assert(authEvent.success)
+  assertEquals(authEvent.value.tags.filter((tag) => tag[0] === "x"), [["x", testSha256]])
 })
 
 Deno.test("mirrorBlob forwards timeoutMs and signal to the http client", async () => {
@@ -96,6 +129,7 @@ Deno.test("mirrorBlob forwards timeoutMs and signal to the http client", async (
   const result = await mirrorBlob({
     serverUrl: testServerUrl,
     sourceUrl: "https://example.com/image.png",
+    sha256: testSha256,
     timeoutMs: 5000,
     signal: controller.signal,
   })
