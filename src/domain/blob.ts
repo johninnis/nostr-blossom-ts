@@ -1,11 +1,13 @@
-import type { Result } from "@innis/nostr-core"
+import type { FileMetadata, Result } from "@innis/nostr-core"
 import {
   computeSha256 as computeSha256Core,
   createBrand,
   createHexBrand,
   failure,
   isRecord,
+  isValidTagsArray,
   ok,
+  parseFileMetadataTags,
 } from "@innis/nostr-core"
 import type { BlobDescriptor, ListBlobsQuery, ServerUrl, Sha256 } from "./types.ts"
 import { ValidationError } from "./errors.ts"
@@ -57,12 +59,16 @@ export const buildListQueryString = (query: ListBlobsQuery): string => {
 export const computeSha256 = async (data: ArrayBuffer): Promise<Result<Sha256, ValidationError>> =>
   createSha256(await computeSha256Core(data))
 
+const parseNip94Field = (value: unknown): FileMetadata | null =>
+  isValidTagsArray(value) ? parseFileMetadataTags(value) : null
+
 /**
  * Validate an unknown value (e.g. a parsed JSON object from a server response or a persisted cache)
  * as a {@link BlobDescriptor}. The `sha256` field is branded and lowercase-normalised through the same
  * {@link createSha256} path, so a successful result's `sha256` is a ready-to-use {@link Sha256}; a
- * non-hex hash or any missing/mistyped field fails the parse. This is the only validated
- * `unknown → BlobDescriptor` path — use it instead of casting raw input.
+ * non-hex hash or any missing/mistyped field fails the parse. A BUD-08 `nip94` field, when present,
+ * must be a NIP-94 tag list carrying a `url` and is parsed to a `FileMetadata`. This is the only
+ * validated `unknown → BlobDescriptor` path — use it instead of casting raw input.
  */
 export const parseBlobDescriptor = (value: unknown): Result<BlobDescriptor, ValidationError> => {
   if (!isRecord(value)) {
@@ -78,7 +84,12 @@ export const parseBlobDescriptor = (value: unknown): Result<BlobDescriptor, Vali
   ) {
     return failure(new ValidationError("malformed Blossom blob descriptor"))
   }
-  return ok({ url: value.url, sha256, size: value.size, type: value.type, uploaded: value.uploaded })
+  const descriptor = { url: value.url, sha256, size: value.size, type: value.type, uploaded: value.uploaded }
+  if (value.nip94 === undefined) return ok(descriptor)
+  const nip94 = parseNip94Field(value.nip94)
+  return nip94 === null
+    ? failure(new ValidationError("malformed Blossom blob descriptor"))
+    : ok({ ...descriptor, nip94 })
 }
 
 /**

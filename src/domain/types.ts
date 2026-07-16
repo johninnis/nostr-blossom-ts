@@ -1,4 +1,4 @@
-import type { Brand } from "@innis/nostr-core"
+import type { Brand, FileMetadata } from "@innis/nostr-core"
 
 declare const sha256Brand: unique symbol
 declare const serverUrlBrand: unique symbol
@@ -8,13 +8,14 @@ export type Sha256 = Brand<typeof sha256Brand>
 /** A validated Blossom server origin (`https://host[:port]`, scheme + host only, no path). Construct via {@link createServerUrl}. */
 export type ServerUrl = Brand<typeof serverUrlBrand>
 
-/** The metadata a Blossom server returns for a stored blob (BUD-02). Its `sha256` is already branded, so it can be passed straight to a use-case. */
+/** The metadata a Blossom server returns for a stored blob (BUD-02). Its `sha256` is already branded, so it can be passed straight to a use-case. `nip94` carries the server's optional BUD-08 NIP-94 metadata (dimensions, blurhash, original hash), already parsed to a `FileMetadata`. */
 export interface BlobDescriptor {
   readonly url: string
   readonly sha256: Sha256
   readonly size: number
   readonly type: string
   readonly uploaded: number
+  readonly nip94?: FileMetadata
 }
 
 /** The `t`-tag verb of a kind-24242 authorisation event, identifying the endpoint being authorised (BUD-11). */

@@ -122,6 +122,49 @@ Deno.test("parseBlobDescriptor rejects a string uploaded timestamp", () => {
   assertEquals(result.error.tag, "ValidationError")
 })
 
+Deno.test("parseBlobDescriptor omits nip94 when the field is absent", () => {
+  const result = parseBlobDescriptor(validDescriptor)
+  assert(result.success)
+  assertEquals(result.value.nip94, undefined)
+})
+
+Deno.test("parseBlobDescriptor parses a BUD-08 nip94 tag list to a FileMetadata", () => {
+  const result = parseBlobDescriptor({
+    ...validDescriptor,
+    nip94: [
+      ["url", validDescriptor.url],
+      ["m", "image/png"],
+      ["x", "a".repeat(64)],
+      ["ox", "b".repeat(64)],
+      ["size", "1024"],
+      ["dim", "800x600"],
+      ["blurhash", "L55iUPo*4hf;kHkCj^ahXFa$xjod"],
+    ],
+  })
+  assert(result.success)
+  assertEquals(result.value.nip94, {
+    url: validDescriptor.url,
+    mimeType: "image/png",
+    hash: "a".repeat(64),
+    originalHash: "b".repeat(64),
+    size: 1024,
+    dimensions: "800x600",
+    blurhash: "L55iUPo*4hf;kHkCj^ahXFa$xjod",
+  })
+})
+
+Deno.test("parseBlobDescriptor rejects a nip94 field that is not a tag list", () => {
+  const result = parseBlobDescriptor({ ...validDescriptor, nip94: { dim: "800x600" } })
+  assert(!result.success)
+  assertEquals(result.error.tag, "ValidationError")
+})
+
+Deno.test("parseBlobDescriptor rejects a nip94 tag list without a url", () => {
+  const result = parseBlobDescriptor({ ...validDescriptor, nip94: [["dim", "800x600"]] })
+  assert(!result.success)
+  assertEquals(result.error.tag, "ValidationError")
+})
+
 Deno.test("parseBlobDescriptorList brands every descriptor in the array", () => {
   const result = parseBlobDescriptorList([validDescriptor, { ...validDescriptor, sha256: "b".repeat(64) }])
   assert(result.success)
