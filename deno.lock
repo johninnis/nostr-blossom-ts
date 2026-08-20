@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@innis/coding-standards@0.1": "0.1.0",
     "jsr:@innis/nostr-core@~0.2.15": "0.2.15",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.14",
@@ -12,6 +13,12 @@
     "npm:@scure/base@2": "2.2.0"
   },
   "jsr": {
+    "@innis/coding-standards@0.1.0": {
+      "integrity": "98dbc25a72075f94bd9ed4999283104055cf531ea890b23d9c789b0be5c5a78d",
+      "dependencies": [
+        "jsr:@std/path"
+      ]
+    },
     "@innis/nostr-core@0.2.15": {
       "integrity": "b17f5f4cf857e7b120398c44583ec00af257c6ddc14a8f2c4220cd2320ad4e66",
       "dependencies": [
