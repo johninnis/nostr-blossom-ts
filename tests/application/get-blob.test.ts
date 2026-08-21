@@ -6,7 +6,7 @@ import {
   createFakeSigner,
   createFakeSuccessResponse,
 } from "../_helpers/fakes.ts"
-import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
+import { computeSha256, createServerUrl, createSha256 } from "../../src/domain/blob.ts"
 
 const serverResult = createServerUrl("https://blossom.example.com")
 assert(serverResult.success)
@@ -49,6 +49,29 @@ Deno.test("getBlob returns server error on 404", async () => {
 
   assert(!result.success)
   assertEquals(result.error.tag, "ServerError")
+})
+
+Deno.test("getBlob with verify accepts a body matching the requested hash", async () => {
+  const body = "binary-bytes"
+  const digest = await computeSha256(await new Blob([body]).arrayBuffer())
+  assert(digest.success)
+  const httpClient = createFakeHttpClient(createFakeSuccessResponse(200, body))
+  const getBlob = createGetBlob({ signer: createFakeSigner(), httpClient })
+
+  const result = await getBlob({ serverUrl: testServerUrl, sha256: digest.value, verify: true })
+
+  assert(result.success)
+  assertEquals(await result.value.data.text(), body)
+})
+
+Deno.test("getBlob with verify rejects a body that does not hash to the requested hash", async () => {
+  const httpClient = createFakeHttpClient(createFakeSuccessResponse(200, "tampered-bytes"))
+  const getBlob = createGetBlob({ signer: createFakeSigner(), httpClient })
+
+  const result = await getBlob({ serverUrl: testServerUrl, sha256: testHash, verify: true })
+
+  assert(!result.success)
+  assertEquals(result.error.tag, "ValidationError")
 })
 
 Deno.test("getBlob forwards timeoutMs and signal to the http client", async () => {

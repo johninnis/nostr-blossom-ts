@@ -55,8 +55,8 @@ export const buildListQueryString = (query: ListBlobsQuery): string => {
   return str.length > 0 ? `?${str}` : ""
 }
 
-/** Compute the {@link Sha256} of an `ArrayBuffer`, branding the digest through the same {@link createSha256} path so there is one validation path. Returns `Result<Sha256, ValidationError>`. */
-export const computeSha256 = async (data: ArrayBuffer): Promise<Result<Sha256, ValidationError>> =>
+/** Compute the {@link Sha256} of any `BufferSource` (an `ArrayBuffer` or typed-array view), branding the digest through the same {@link createSha256} path so there is one validation path. Returns `Result<Sha256, ValidationError>`. */
+export const computeSha256 = async (data: BufferSource): Promise<Result<Sha256, ValidationError>> =>
   createSha256(await computeSha256Core(data))
 
 const parseNip94Field = (value: unknown): FileMetadata | null =>

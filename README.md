@@ -29,6 +29,9 @@ deno add jsr:@innis/nostr-blossom
 - **`createUnsignedAuthEvent({ action, content, expiration?, createdAt?, hashes? })`** — builds the kind 24242 template (action `t` tag, NIP-40 `expiration`, optional `x` hash tags). `createdAt` defaults to the system clock; pin it for deterministic output. Caller signs via `BlossomSigner.sign`.
 - **`createUnsignedReportEvent({ sha256, reportType, reason })`** — builds the kind 1984 NIP-56 report template (`["x", <sha256>, <reportType>]`).
 - **`buildListQueryString(query)`** — URL-encodes `ListBlobsQuery` (cursor, limit, since, until).
+- **`buildBlobUrl(serverUrl, sha256, extension?)`** — the BUD-01 URL a blob is served from (`<origin>/<sha256>[.<ext>]`).
+- **`extractSha256FromUrl(url)`** — the reverse: reads the `Sha256` out of a blob URL (the last 64-hex path segment, per BUD-03's rule for finding a blob's hash so it can be fetched elsewhere). Returns `Result<Sha256, ValidationError>` — the single validated URL → hash path.
+- **`buildFallbackUrls(url, servers)`** — the ordered, deduplicated candidate URLs a blob may be fetched from: the original URL, its origin's flat BUD-01 URL, then each of the user's servers, preserving the file extension. A URL addressing no hash gets no alternatives.
 
 ### Ports — `application/ports.ts`
 
@@ -72,10 +75,19 @@ Each takes `BlossomDeps` and returns a function `(input) => Promise<Result<T, Bl
 - **`createListBlobs`** — `GET /list/<pubkey>`. Returns `ReadonlyArray<BlobDescriptor>`.
 - **`createDeleteBlob`** — `DELETE /<sha256>`. Auth-action `delete`.
 - **`createMirrorBlob`** — `PUT /mirror`. Body is `{ url }`; the server fetches and stores. Auth-action `upload` (BUD-04).
-- **`createGetBlob`** — `GET /<sha256>`. Returns the body as a `Blob` plus its content type. Auth-action `get`.
+- **`createGetBlob`** — `GET /<sha256>`. Returns the body as a `Blob` plus its content type. Auth-action `get`. With `verify: true` the body is hashed and compared to the requested `sha256`; a corrupt or lying server becomes a `ValidationError` failure instead of bad bytes.
 - **`createHeadBlob`** — `HEAD /<sha256>`. Returns `BlobHeaders` (`contentType`, `contentLength`). Auth-action `get`.
 - **`createCheckUpload`** — `HEAD /upload` (BUD-06). Asks "would this upload succeed?" before sending the body, via `X-SHA-256`/`X-Content-Length`/`X-Content-Type` headers.
 - **`createReportBlob`** — `PUT /report`. Signs a kind 1984 NIP-56 report referencing the blob's sha256 and sends it as the request body. Per BUD-09 this endpoint takes **no** kind-24242 auth header. It is a server-side report; it does not propagate over Nostr unless the operator forwards it.
+
+### Multi-server orchestration — `application/`
+
+A user's BUD-03 server list is an ordered fallback chain, and every consumer otherwise rewrites the same loops over it. These factories are those loops, done once, composed from the single-server use-cases above (same `BlossomDeps`, same abort controls):
+
+- **`createListBlobsAcrossServers`** — lists the pubkey's blobs on every server concurrently and streams a `ListAcrossServersUpdate` to `onUpdate` as each server replies, never waiting for the slowest. Blobs are merged by hash with the servers each is present on; `respondedServers` / `failedServers` tell you which absences are meaningful. Returns a handle whose `abort()` cancels the in-flight requests — call it on teardown.
+- **`createUploadWithMirrors`** — uploads to the first server, then asks the rest to mirror, concurrently. Only the primary upload decides success; per-mirror outcomes are reported in the result for the caller to surface or retry.
+- **`createMirrorToServers`** — asks every server to mirror an existing blob, concurrently, resolving to a `ServerOutcome` per server. (`createUploadWithMirrors` composes this.)
+- **`createGetBlobWithFallback`** — tries each server in preference order until one returns the blob. Every response is verified against the requested hash — a lying server counts as a failure and the chain moves on — so the resolved blob is guaranteed to be the content you addressed.
 
 **Why `get`/`head` authenticate.** BUD-01 makes the `get` auth event *optional* — public blobs need none. This library authenticates anyway, because its job is managing **your own** storage: fetching private blobs, or reading from servers that gate downloads per-pubkey. A signed `get` event is the superset that works in every case (servers that don't require auth ignore it). If you only ever need anonymous public reads, you don't need this library — fetch the blob URL directly.
 
@@ -108,6 +120,24 @@ const result = await upload({ serverUrl, file })
 ```
 
 `deps` is reusable across every factory (`createListBlobs(deps)`, `createDeleteBlob(deps)`, …) — build it once.
+
+## Testing
+
+`@innis/nostr-blossom/testing` ships an in-memory Blossom network implementing the `HttpClient` port, so hosts drive the real use-cases against conformant BUD behaviour — auth-event checking, content addressing, cross-server mirroring — with no socket and no mocks of the lib itself:
+
+```ts
+import { createInMemoryBlossomNetwork } from "@innis/nostr-blossom/testing"
+
+const network = createInMemoryBlossomNetwork()
+const server = network.createServer("https://one.example.com")
+const deps = { signer, httpClient: network.httpClient }
+
+await server.seedBlob({ data, pubkey })     // arrange state directly
+server.setUnreachable(true)                 // simulate a dead server
+server.getStoredBlobs()                     // assert what the server holds
+```
+
+`seedBlob` accepts a `sha256` override that makes the server lie about a blob's content — seed with it to exercise integrity verification.
 
 ## Anti-patterns
 

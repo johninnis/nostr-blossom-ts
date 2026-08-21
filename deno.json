@@ -10,7 +10,10 @@
   },
   "license": "MIT",
   "description": "TypeScript client for the Blossom media-server protocol: upload, list, delete, mirror, download, head, check, and report blobs. SHA-256 addressing, kind 24242 auth events, Signer + HttpClient ports, Result-based.",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./testing": "./testing.ts"
+  },
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true
@@ -21,7 +24,7 @@
     "@innis/nostr-core": "jsr:@innis/nostr-core@^0.2.15"
   },
   "tasks": {
-    "check": "deno check mod.ts src/ tests/",
+    "check": "deno check mod.ts testing.ts src/ tests/ examples/",
     "lint": "deno lint",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
