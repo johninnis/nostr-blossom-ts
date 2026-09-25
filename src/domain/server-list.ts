@@ -23,3 +23,28 @@ export const parseServerList = (tags: ReadonlyArray<Tag>): ReadonlyArray<ServerU
   }
   return servers
 }
+
+const isServerTagFor = (tag: Tag, serverUrl: ServerUrl): boolean => {
+  if (tag[0] !== "server") return false
+  const parsed = createServerUrl(tag[1] ?? "")
+  return parsed.success && parsed.value === serverUrl
+}
+
+/**
+ * Append a `server` tag for `serverUrl` to a BUD-03 server list's tags, unless one already names it. A
+ * tag names the server when it normalises through {@link createServerUrl} to the same origin, as
+ * {@link parseServerList} reads it — so a tag written with a trailing slash or an uppercase host still
+ * matches. Returns `tags` itself (the same reference) when the server is already listed.
+ */
+export const addServerTag = (tags: ReadonlyArray<Tag>, serverUrl: ServerUrl): ReadonlyArray<Tag> =>
+  tags.some((tag) => isServerTagFor(tag, serverUrl)) ? tags : [...tags, ["server", serverUrl]]
+
+/**
+ * Remove every `server` tag naming `serverUrl` from a BUD-03 server list's tags, matching through
+ * {@link createServerUrl} normalisation as {@link addServerTag} does. Other tags keep their order.
+ * Returns `tags` itself (the same reference) when no tag names the server.
+ */
+export const removeServerTag = (tags: ReadonlyArray<Tag>, serverUrl: ServerUrl): ReadonlyArray<Tag> => {
+  const kept = tags.filter((tag) => !isServerTagFor(tag, serverUrl))
+  return kept.length === tags.length ? tags : kept
+}

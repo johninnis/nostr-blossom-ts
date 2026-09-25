@@ -1,7 +1,9 @@
 import { assert, assertEquals } from "@std/assert"
+import { ok } from "@innis/nostr-core"
 import { createCheckUpload } from "../../src/application/check-upload.ts"
 import {
   createCapturingHttpClient,
+  createFailingSigner,
   createFakeHttpClient,
   createFakeSigner,
   createFakeSuccessResponse,
@@ -18,13 +20,13 @@ const testHash = hashResult.value
 
 const input = { serverUrl: testServerUrl, sha256: testHash, size: 1024, contentType: "image/png" }
 
-Deno.test("checkUpload succeeds and sends BUD-06 headers to HEAD /upload", async () => {
+Deno.test("checkUpload accepts and sends BUD-06 headers to HEAD /upload", async () => {
   const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
   const checkUpload = createCheckUpload({ signer: createFakeSigner(), httpClient: captured.client })
 
   const result = await checkUpload(input)
 
-  assert(result.success)
+  assertEquals(result, ok({ verdict: "accepted" }))
   const request = captured.requests[0]
   assert(request)
   assertEquals(request.method, "HEAD")
@@ -34,7 +36,7 @@ Deno.test("checkUpload succeeds and sends BUD-06 headers to HEAD /upload", async
   assertEquals(request.headers?.["X-Content-Type"], "image/png")
 })
 
-Deno.test("checkUpload surfaces a 413 as a server error", async () => {
+Deno.test("checkUpload reports a 413 as rejected with the server's status and reason", async () => {
   const httpClient = createFakeHttpClient(
     createFakeSuccessResponse(413, "Too large", { "x-reason": "Too large" }),
   )
@@ -42,8 +44,28 @@ Deno.test("checkUpload surfaces a 413 as a server error", async () => {
 
   const result = await checkUpload(input)
 
+  assertEquals(result, ok({ verdict: "rejected", status: 413, reason: "Too large" }))
+})
+
+for (const status of [404, 405, 501]) {
+  Deno.test(`checkUpload reports a ${status} as a server without the check endpoint`, async () => {
+    const httpClient = createFakeHttpClient(createFakeSuccessResponse(status, "no such endpoint"))
+    const checkUpload = createCheckUpload({ signer: createFakeSigner(), httpClient })
+
+    const result = await checkUpload(input)
+
+    assertEquals(result, ok({ verdict: "unsupported", status }))
+  })
+}
+
+Deno.test("checkUpload fails when the request cannot be signed", async () => {
+  const httpClient = createFakeHttpClient(createFakeSuccessResponse(200, ""))
+  const checkUpload = createCheckUpload({ signer: createFailingSigner(), httpClient })
+
+  const result = await checkUpload(input)
+
   assert(!result.success)
-  assertEquals(result.error.tag, "ServerError")
+  assertEquals(result.error.tag, "SigningError")
 })
 
 Deno.test("checkUpload forwards timeoutMs and signal to the http client", async () => {

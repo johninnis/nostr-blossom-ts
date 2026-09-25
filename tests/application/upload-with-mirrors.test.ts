@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert"
-import { createLocalSigner, generateSecretKey } from "@innis/nostr-core"
+import type { HttpClient } from "@innis/nostr-core"
+import { createLocalSigner, failure, generateSecretKey, ServerError } from "@innis/nostr-core"
 import { createUploadWithMirrors } from "../../src/application/upload-with-mirrors.ts"
 import { adaptSigner } from "../../src/infrastructure/signer-adapter.ts"
 import { createInMemoryBlossomNetwork } from "../../testing.ts"
@@ -72,4 +73,36 @@ Deno.test("uploadWithMirrors fails on an empty server list", async () => {
 
   assert(!result.success)
   assertEquals(result.error.tag, "ValidationError")
+})
+
+Deno.test("uploadWithMirrors with check mirrors nothing when the primary rejects the check", async () => {
+  const network = createInMemoryBlossomNetwork()
+  const primary = network.createServer("https://one.example.com")
+  const mirror = network.createServer("https://two.example.com")
+  const httpClient: HttpClient = {
+    request: (request) =>
+      request.method === "HEAD" && request.url === `${primary.url}/upload`
+        ? Promise.resolve(failure(new ServerError(403, "not permitted")))
+        : network.httpClient.request(request),
+  }
+  const uploadWithMirrors = createUploadWithMirrors({ signer, httpClient })
+
+  const result = await uploadWithMirrors({ servers: [primary.url, mirror.url], file: testFile(), check: true })
+
+  assert(!result.success)
+  assertEquals(result.error.message, "not permitted")
+  assertEquals(primary.getStoredBlobs().length, 0)
+  assertEquals(mirror.getStoredBlobs().length, 0)
+})
+
+Deno.test("uploadWithMirrors with check uploads and mirrors when the primary accepts", async () => {
+  const network = createInMemoryBlossomNetwork()
+  const primary = network.createServer("https://one.example.com")
+  const mirror = network.createServer("https://two.example.com")
+  const uploadWithMirrors = createUploadWithMirrors({ signer, httpClient: network.httpClient })
+
+  const result = await uploadWithMirrors({ servers: [primary.url, mirror.url], file: testFile(), check: true })
+
+  assert(result.success)
+  assertEquals(mirror.getStoredBlobs().length, 1)
 })

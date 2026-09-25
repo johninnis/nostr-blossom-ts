@@ -5,13 +5,14 @@ import { ValidationError } from "../domain/errors.ts"
 import type { BlobDescriptor, ServerUrl } from "../domain/types.ts"
 import type { BlossomDeps } from "./ports.ts"
 import { createUpload } from "./upload-blob.ts"
-import type { ServerOutcome } from "./mirror-to-servers.ts"
+import type { ServerOutcome } from "./server-outcomes.ts"
 import { createMirrorToServers } from "./mirror-to-servers.ts"
 
 interface UploadWithMirrorsInput {
   readonly servers: ReadonlyArray<ServerUrl>
   readonly file: File
   readonly endpoint?: "upload" | "media"
+  readonly check?: boolean
   readonly timeoutMs?: number
   readonly signal?: AbortSignal
 }
@@ -27,7 +28,9 @@ export interface UploadWithMirrorsReport {
  * BUD-03 preferred server), then ask every remaining server, concurrently, to mirror the stored
  * blob. Only the primary upload decides success — a failed mirror leaves the blob available and is
  * reported in the {@link UploadWithMirrorsReport}'s `mirrors` for the caller to surface or retry.
- * An empty server list is a `ValidationError` failure.
+ * An empty server list is a `ValidationError` failure. `check: true` runs the BUD-06 check against the
+ * primary before its upload, as {@link createUpload} does; mirrors receive the blob only after the primary
+ * has accepted it.
  */
 export const createUploadWithMirrors = (
   deps: BlossomDeps,
@@ -45,6 +48,7 @@ export const createUploadWithMirrors = (
       serverUrl: primary,
       file: input.file,
       endpoint: input.endpoint,
+      check: input.check,
       timeoutMs: input.timeoutMs,
       signal: input.signal,
     })

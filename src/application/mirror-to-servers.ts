@@ -1,14 +1,8 @@
-import type { Result } from "@innis/nostr-core"
-import type { BlossomError } from "../domain/errors.ts"
 import type { BlobDescriptor, ServerUrl, Sha256 } from "../domain/types.ts"
 import type { BlossomDeps } from "./ports.ts"
 import { createMirrorBlob } from "./mirror-blob.ts"
-
-/** One server's result within a multi-server operation: the server addressed and what it returned. */
-export interface ServerOutcome<T> {
-  readonly serverUrl: ServerUrl
-  readonly result: Result<T, BlossomError>
-}
+import type { ServerOutcome } from "./server-outcomes.ts"
+import { collectServerOutcomes } from "./server-outcomes.ts"
 
 interface MirrorToServersInput {
   readonly servers: ReadonlyArray<ServerUrl>
@@ -30,14 +24,12 @@ export const createMirrorToServers = (
   const mirrorBlob = createMirrorBlob(deps)
 
   return (input) =>
-    Promise.all(input.servers.map(async (serverUrl) => ({
-      serverUrl,
-      result: await mirrorBlob({
+    collectServerOutcomes(input.servers, (serverUrl) =>
+      mirrorBlob({
         serverUrl,
         sourceUrl: input.sourceUrl,
         sha256: input.sha256,
         timeoutMs: input.timeoutMs,
         signal: input.signal,
-      }),
-    })))
+      }))
 }
