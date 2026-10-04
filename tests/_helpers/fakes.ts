@@ -1,15 +1,12 @@
 import type { HttpClient, HttpRequest, HttpResponse } from "@innis/nostr-core"
-import { createLocalSigner, failure, generateSecretKey, ok, ServerError } from "@innis/nostr-core"
+import { createLocalSigner, failure, generateSecretKey, ok, parseJson } from "@innis/nostr-core"
 import type { BlossomSigner } from "../../src/application/ports.ts"
-import { adaptSigner } from "../../src/infrastructure/signer-adapter.ts"
 
-export const createFakeSigner = (): BlossomSigner => adaptSigner(createLocalSigner(generateSecretKey()))
+export const createFakeSigner = (): BlossomSigner => createLocalSigner(generateSecretKey())
 
-export const createFailingSigner = (): BlossomSigner =>
-  adaptSigner({
-    ...createLocalSigner(generateSecretKey()),
-    signEvent: () => Promise.reject(new Error("Test signing failure")),
-  })
+export const createFailingSigner = (): BlossomSigner => ({
+  signEvent: () => Promise.resolve(failure({ type: "sign-failed", message: "Test signing failure" })),
+})
 
 export const createFakeSuccessResponse = (
   status: number,
@@ -18,7 +15,12 @@ export const createFakeSuccessResponse = (
 ): HttpResponse => ({
   status,
   headers: new Headers(headers),
-  json: () => Promise.resolve(ok(JSON.parse(body))),
+  json: () => {
+    const parsed = parseJson(body)
+    return Promise.resolve(
+      parsed.success ? parsed : failure({ type: "malformed-body", message: "response body is not JSON" }),
+    )
+  },
   blob: () => Promise.resolve(ok(new Blob([body]))),
   text: () => Promise.resolve(ok(body)),
 })
@@ -28,7 +30,7 @@ export const createFakeHttpClient = (response: HttpResponse): HttpClient => ({
     if (response.status >= 400) {
       const textResult = await response.text()
       const reason = response.headers.get("x-reason") ?? (textResult.success ? textResult.value : "")
-      return failure(new ServerError(response.status, reason))
+      return failure({ type: "server", status: response.status, message: reason })
     }
     return ok(response)
   },

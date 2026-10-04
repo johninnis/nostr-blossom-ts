@@ -25,8 +25,7 @@ interface ListAcrossServersInput {
   readonly servers: ReadonlyArray<ServerUrl>
   readonly pubkey: PublicKey
   readonly query?: ListBlobsQuery
-  readonly timeoutMs?: number
-  readonly signal?: AbortSignal
+  readonly signal?: AbortSignal | undefined
   readonly onUpdate: (update: ListAcrossServersUpdate) => void
 }
 
@@ -66,7 +65,6 @@ export const createListBlobsAcrossServers = (
         serverUrl,
         pubkey: input.pubkey,
         query: input.query,
-        timeoutMs: input.timeoutMs,
         signal,
       }).then((result) => {
         if (signal.aborted) return

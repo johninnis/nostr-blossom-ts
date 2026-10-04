@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert"
-import { parseAuthHeader } from "@innis/nostr-core"
+import { parseBlossomAuthHeader } from "@innis/nostr-core"
 import { createMirrorBlob } from "../../src/application/mirror-blob.ts"
 import {
   createCapturingHttpClient,
@@ -10,12 +10,12 @@ import {
 import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
 
 const testServerUrlResult = createServerUrl("https://blossom.example.com")
-assert(testServerUrlResult.success)
-const testServerUrl = testServerUrlResult.value
+assert(testServerUrlResult !== null)
+const testServerUrl = testServerUrlResult
 
 const testSha256Result = createSha256("c".repeat(64))
-assert(testSha256Result.success)
-const testSha256 = testSha256Result.value
+assert(testSha256Result !== null)
+const testSha256 = testSha256Result
 
 Deno.test("mirrorBlob returns descriptor on success", async () => {
   const descriptor = {
@@ -86,7 +86,7 @@ Deno.test("mirrorBlob rejects a descriptor with a malformed hash", async () => {
   })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result.error.type, "validation")
 })
 
 Deno.test("mirrorBlob authorises the blob via an x tag carrying its sha256", async () => {
@@ -109,12 +109,12 @@ Deno.test("mirrorBlob authorises the blob via an x tag carrying its sha256", asy
   assert(result.success)
   const authHeader = captured.requests[0]?.headers?.Authorization
   assert(authHeader)
-  const authEvent = parseAuthHeader(authHeader)
+  const authEvent = parseBlossomAuthHeader(authHeader)
   assert(authEvent.success)
   assertEquals(authEvent.value.tags.filter((tag) => tag[0] === "x"), [["x", testSha256]])
 })
 
-Deno.test("mirrorBlob forwards timeoutMs and signal to the http client", async () => {
+Deno.test("mirrorBlob forwards its signal to the http client", async () => {
   const descriptor = {
     url: "https://blossom.example.com/mirrored.png",
     sha256: "c".repeat(64),
@@ -130,13 +130,11 @@ Deno.test("mirrorBlob forwards timeoutMs and signal to the http client", async (
     serverUrl: testServerUrl,
     sourceUrl: "https://example.com/image.png",
     sha256: testSha256,
-    timeoutMs: 5000,
     signal: controller.signal,
   })
 
   assert(result.success)
   const request = captured.requests[0]
   assert(request)
-  assertEquals(request.timeoutMs, 5000)
   assertEquals(request.signal, controller.signal)
 })

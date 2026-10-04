@@ -1,33 +1,39 @@
 /**
  * Test helpers for the `@innis/nostr-blossom` package: an in-memory Blossom server network
  * implementing the `HttpClient` port, so hosts can drive the real use-cases against conformant
- * BUD-01/02/04/06/09 behaviour — auth-event checking, content addressing, multi-server mirroring —
+ * BUD-01/02/04/05/06/09/11/12 behaviour — auth-event checking, content addressing, multi-server mirroring —
  * without a socket. Import from `@innis/nostr-blossom/testing`.
  *
  * @module
  */
-import type { HttpClient, HttpRequest, HttpResponse, NostrEvent, PublicKey, Result } from "@innis/nostr-core"
+import type {
+  HttpClient,
+  HttpRequest,
+  HttpRequestFailure,
+  HttpResponse,
+  MalformedBodyFailure,
+  NetworkFailure,
+  NostrEvent,
+  PublicKey,
+  Result,
+} from "@innis/nostr-core"
 import {
   extractTagValues,
   failure,
-  getTagValue,
+  isEventExpired,
   isRecord,
-  NetworkError,
+  KIND_BLOSSOM_AUTHORISATION,
+  KIND_REPORTING,
   now,
   ok,
+  parseBlossomAuthHeader,
+  parseJson,
   parseNostrEvent,
-  ServerError,
-  tryParseJson,
+  soleTagValue,
+  verifyEventSignature,
 } from "@innis/nostr-core"
-import type { BlobDescriptor, ServerUrl, Sha256 } from "./mod.ts"
-import {
-  BLOSSOM_AUTH_EVENT_KIND,
-  buildBlobUrl,
-  computeSha256,
-  createServerUrl,
-  extractSha256FromUrl,
-  REPORT_EVENT_KIND,
-} from "./mod.ts"
+import type { AuthAction, BlobDescriptor, ServerUrl, Sha256, UploadEndpoint } from "./mod.ts"
+import { buildBlobUrl, computeSha256, createServerUrl, extractSha256FromUrl } from "./mod.ts"
 
 /** A blob held by an {@link InMemoryBlossomServer}, exposed for test assertions. `pubkey` is the uploader's, and is what `GET /list/<pubkey>` matches on; seeded blobs without one list under no pubkey. */
 export interface StoredBlob {
@@ -38,21 +44,22 @@ export interface StoredBlob {
   readonly pubkey: string
 }
 
-/** Input to {@link InMemoryBlossomServer.seedBlob}. `sha256` overrides the computed hash, making the server lie about the blob's content — seed with it to test integrity verification. */
+/** Input to {@link InMemoryBlossomServer.seedBlob}. `sha256` overrides the computed hash, making the server lie about the blob's content — seed with it to test integrity verification. `uploaded` overrides the server's clock, to arrange the newest-first order `GET /list` pages through. */
 export interface SeedBlobInput {
   readonly data: Uint8Array
   readonly type?: string
   readonly pubkey?: PublicKey
   readonly sha256?: Sha256
+  readonly uploaded?: number
 }
 
 /** One fake Blossom server inside an {@link InMemoryBlossomNetwork}: its origin, its stored blobs, and test controls. */
 export interface InMemoryBlossomServer {
   readonly url: ServerUrl
   /** Store a blob directly, bypassing upload auth; resolves to the descriptor the server will report. */
-  readonly seedBlob: (input: SeedBlobInput) => Promise<BlobDescriptor>
+  readonly seedBlob: (input: SeedBlobInput) => BlobDescriptor
   readonly getStoredBlobs: () => ReadonlyArray<StoredBlob>
-  /** While `true`, every request to this server fails with a `NetworkError`, as if it were down. */
+  /** While `true`, every request to this server fails with a `NetworkFailure`, as if it were down. */
   readonly setUnreachable: (unreachable: boolean) => void
   /** Discard every stored blob. */
   readonly clear: () => void
@@ -72,23 +79,33 @@ interface ServerState {
 
 interface StoreBlobInput {
   readonly data: Uint8Array
-  readonly type?: string
+  readonly type?: string | undefined
   readonly pubkey?: string
   readonly sha256?: Sha256
+  readonly uploaded?: number
 }
 
-const authorisedEvent = (request: HttpRequest, action: string): NostrEvent | null => {
-  const header = request.headers?.["Authorization"]
-  if (header === undefined || !header.startsWith("Nostr ")) return null
-  let decoded: string
-  try {
-    decoded = atob(header.slice("Nostr ".length))
-  } catch {
-    return null
-  }
-  const event = parseNostrEvent(tryParseJson(decoded))
-  if (event === null || event.kind !== BLOSSOM_AUTH_EVENT_KIND) return null
-  return getTagValue(event.tags, "t") === action ? event : null
+const isScopedTo = (event: NostrEvent, server: ServerState): boolean => {
+  const domains = extractTagValues(event.tags, "server")
+  return domains.length === 0 || domains.includes(new URL(server.url).hostname)
+}
+
+const CLOCK_SKEW_TOLERANCE_SECONDS = 60
+
+const isValidToken = (event: NostrEvent, server: ServerState, action: AuthAction): boolean => {
+  const at = now()
+  return event.kind === KIND_BLOSSOM_AUTHORISATION &&
+    event.created_at <= at + CLOCK_SKEW_TOLERANCE_SECONDS &&
+    extractTagValues(event.tags, "expiration").length > 0 &&
+    !isEventExpired(event, at) &&
+    soleTagValue(event.tags, "t").value === action &&
+    isScopedTo(event, server) &&
+    verifyEventSignature(event)
+}
+
+const authorisedEvent = (server: ServerState, request: HttpRequest, action: AuthAction): NostrEvent | null => {
+  const decoded = parseBlossomAuthHeader(request.headers?.["Authorization"] ?? "")
+  return decoded.success && isValidToken(decoded.value, server, action) ? decoded.value : null
 }
 
 const authorisesHash = (event: NostrEvent, sha256: string): boolean =>
@@ -110,14 +127,16 @@ const bodyBytes = (body: BodyInit | undefined): Uint8Array<ArrayBuffer> | null =
   return null
 }
 
+const NOT_JSON: MalformedBodyFailure = { type: "malformed-body", message: "response body is not JSON" }
+
 const buildResponse = (
   status: number,
   body: Uint8Array<ArrayBuffer>,
   headers: Record<string, string>,
 ): HttpResponse => {
   let read = false
-  const readOnce = <T>(produce: () => T): Result<T, NetworkError> => {
-    if (read) return failure(new NetworkError("body stream already read"))
+  const readOnce = <T>(produce: () => T): Result<T, NetworkFailure> => {
+    if (read) return failure({ type: "network", message: "body stream already read" })
     read = true
     return ok(produce())
   }
@@ -125,9 +144,14 @@ const buildResponse = (
   return {
     status,
     headers: new Headers(headers),
-    json: () => Promise.resolve(readOnce(() => JSON.parse(text()))),
+    json: () => {
+      const read = readOnce(text)
+      if (!read.success) return Promise.resolve(read)
+      const parsed = parseJson(read.value)
+      return Promise.resolve(parsed.success ? parsed : failure(NOT_JSON))
+    },
     text: () => Promise.resolve(readOnce(text)),
-    blob: () => Promise.resolve(readOnce(() => new Blob([body], { type: headers["content-type"] }))),
+    blob: () => Promise.resolve(readOnce(() => new Blob([body], { type: headers["content-type"] ?? "" }))),
   }
 }
 
@@ -147,38 +171,32 @@ const descriptorFor = (server: ServerState, blob: StoredBlob): BlobDescriptor =>
   uploaded: blob.uploaded,
 })
 
-const hashOf = async (data: Uint8Array<ArrayBuffer>): Promise<Sha256> => {
-  const computed = await computeSha256(data)
-  if (!computed.success) throw new TypeError(computed.error.message)
-  return computed.value
-}
-
-const storeBlob = async (server: ServerState, input: StoreBlobInput): Promise<BlobDescriptor> => {
+const storeBlob = (server: ServerState, input: StoreBlobInput): BlobDescriptor => {
   const data = new Uint8Array(toArrayBuffer(input.data))
   const blob: StoredBlob = {
-    sha256: input.sha256 ?? await hashOf(data),
+    sha256: input.sha256 ?? computeSha256(data),
     data,
     type: input.type ?? "application/octet-stream",
-    uploaded: now(),
+    uploaded: input.uploaded ?? now(),
     pubkey: input.pubkey ?? "",
   }
   server.blobs.set(blob.sha256, blob)
   return descriptorFor(server, blob)
 }
 
-const handleUpload = async (
+const handleUpload = (
   server: ServerState,
   request: HttpRequest,
-  action: "upload" | "media",
-): Promise<HttpResponse> => {
-  const event = authorisedEvent(request, action)
+  action: UploadEndpoint,
+): HttpResponse => {
+  const event = authorisedEvent(server, request, action)
   if (event === null) return unauthorisedResponse()
   const data = bodyBytes(request.body)
   if (data === null) return errorResponse(400, "missing upload body")
-  const sha256 = await hashOf(data)
+  const sha256 = computeSha256(data)
   if (!authorisesHash(event, sha256)) return hashMismatchResponse()
   return jsonResponse(
-    await storeBlob(server, { data, sha256, type: request.headers?.["Content-Type"], pubkey: event.pubkey }),
+    storeBlob(server, { data, sha256, type: request.headers?.["Content-Type"], pubkey: event.pubkey }),
   )
 }
 
@@ -187,72 +205,91 @@ const handleMirror = (
   server: ServerState,
   request: HttpRequest,
 ): HttpResponse => {
-  const event = authorisedEvent(request, "upload")
+  const event = authorisedEvent(server, request, "upload")
   if (event === null) return unauthorisedResponse()
-  const body = tryParseJson(typeof request.body === "string" ? request.body : "")
-  const sourceUrl = isRecord(body) ? body.url : undefined
+  const body = parseJson(typeof request.body === "string" ? request.body : "")
+  const sourceUrl = body.success && isRecord(body.value) ? body.value.url : undefined
   if (typeof sourceUrl !== "string") return errorResponse(400, "mirror body carries no url")
   const sha256 = extractSha256FromUrl(sourceUrl)
-  if (!sha256.success) return errorResponse(400, sha256.error.message)
-  if (!authorisesHash(event, sha256.value)) return hashMismatchResponse()
+  if (sha256 === null) return errorResponse(400, "URL carries no SHA-256 path segment")
+  if (!authorisesHash(event, sha256)) return hashMismatchResponse()
   const origin = URL.parse(sourceUrl)?.origin
   const source = servers.find((candidate) => candidate.url === origin)
-  const blob = source?.blobs.get(sha256.value)
+  const blob = source?.blobs.get(sha256)
   if (blob === undefined) return errorResponse(404, "source blob not found in network")
   server.blobs.set(blob.sha256, { ...blob, pubkey: event.pubkey })
   return jsonResponse(descriptorFor(server, blob))
 }
 
+const numberParam = (params: URLSearchParams, name: string): number | undefined => {
+  const value = params.get(name)
+  return value === null ? undefined : Number(value)
+}
+
+const pageAfterCursor = (blobs: ReadonlyArray<StoredBlob>, cursor: string | null): ReadonlyArray<StoredBlob> => {
+  const position = blobs.findIndex((blob) => blob.sha256 === cursor)
+  return position === -1 ? blobs : blobs.slice(position + 1)
+}
+
 const handleList = (server: ServerState, request: HttpRequest, pathPubkey: string): HttpResponse => {
-  if (authorisedEvent(request, "list") === null) return unauthorisedResponse()
-  const descriptors = [...server.blobs.values()]
-    .filter((blob) => blob.pubkey === pathPubkey)
-    .map((blob) => descriptorFor(server, blob))
-  return jsonResponse(descriptors)
+  if (authorisedEvent(server, request, "list") === null) return unauthorisedResponse()
+  const params = URL.parse(request.url)?.searchParams ?? new URLSearchParams()
+  const since = numberParam(params, "since") ?? 0
+  const until = numberParam(params, "until") ?? Infinity
+  const newestFirst = [...server.blobs.values()]
+    .filter((blob) => blob.pubkey === pathPubkey && blob.uploaded >= since && blob.uploaded <= until)
+    .toSorted((a, b) => b.uploaded - a.uploaded)
+  const page = pageAfterCursor(newestFirst, params.get("cursor")).slice(0, numberParam(params, "limit"))
+  return jsonResponse(page.map((blob) => descriptorFor(server, blob)))
 }
 
 const handleDelete = (server: ServerState, request: HttpRequest): HttpResponse => {
-  const event = authorisedEvent(request, "delete")
+  const event = authorisedEvent(server, request, "delete")
   if (event === null) return unauthorisedResponse()
   const sha256 = extractSha256FromUrl(request.url)
-  if (!sha256.success) return errorResponse(400, "path carries no SHA-256")
-  if (!authorisesHash(event, sha256.value)) return hashMismatchResponse()
-  if (!server.blobs.delete(sha256.value)) return errorResponse(404, "blob not found")
+  if (sha256 === null) return errorResponse(400, "path carries no SHA-256")
+  if (!authorisesHash(event, sha256)) return hashMismatchResponse()
+  if (!server.blobs.delete(sha256)) return errorResponse(404, "blob not found")
   return jsonResponse({})
 }
 
 const handleReport = (request: HttpRequest): HttpResponse => {
-  const event = parseNostrEvent(tryParseJson(typeof request.body === "string" ? request.body : ""))
-  if (event === null || event.kind !== REPORT_EVENT_KIND) {
+  const body = parseJson(typeof request.body === "string" ? request.body : "")
+  const event = body.success ? parseNostrEvent(body.value) : null
+  if (event === null || event.kind !== KIND_REPORTING) {
     return errorResponse(400, "report body is not a kind-1984 event")
   }
+  if (extractTagValues(event.tags, "x").length === 0) return errorResponse(400, "report names no blob")
+  if (!verifyEventSignature(event)) return errorResponse(400, "report signature does not verify")
   return jsonResponse({})
+}
+
+const handleCheck = (server: ServerState, request: HttpRequest, action: UploadEndpoint): HttpResponse => {
+  const event = authorisedEvent(server, request, action)
+  if (event === null) return unauthorisedResponse()
+  const declared = request.headers?.["X-SHA-256"]
+  if (declared === undefined || !authorisesHash(event, declared)) return hashMismatchResponse()
+  return buildResponse(200, new Uint8Array(), {})
 }
 
 const handleGetBlob = (server: ServerState, request: HttpRequest): HttpResponse => {
   const sha256 = extractSha256FromUrl(request.url)
-  const blob = sha256.success ? server.blobs.get(sha256.value) : undefined
+  const blob = sha256 !== null ? server.blobs.get(sha256) : undefined
   if (blob === undefined) return errorResponse(404, "blob not found")
   const headers = { "content-type": blob.type, "content-length": String(blob.data.length) }
   return buildResponse(200, request.method === "HEAD" ? new Uint8Array() : blob.data, headers)
 }
 
-const route = async (
+const route = (
   servers: ReadonlyArray<ServerState>,
   server: ServerState,
   request: HttpRequest,
-): Promise<HttpResponse> => {
+): HttpResponse => {
   const [, first, second] = (URL.parse(request.url)?.pathname ?? "").split("/")
   if (request.method === "PUT" && (first === "upload" || first === "media")) {
     return handleUpload(server, request, first)
   }
-  if (request.method === "HEAD" && first === "upload") {
-    const event = authorisedEvent(request, "upload")
-    if (event === null) return unauthorisedResponse()
-    const declared = request.headers?.["X-SHA-256"]
-    if (declared === undefined || !authorisesHash(event, declared)) return hashMismatchResponse()
-    return buildResponse(200, new Uint8Array(), {})
-  }
+  if (request.method === "HEAD" && (first === "upload" || first === "media")) return handleCheck(server, request, first)
   if (request.method === "PUT" && first === "mirror") return handleMirror(servers, server, request)
   if (request.method === "PUT" && first === "report") return handleReport(request)
   if (request.method === "GET" && first === "list" && second !== undefined) {
@@ -266,18 +303,18 @@ const route = async (
 const respond = async (
   servers: ReadonlyArray<ServerState>,
   request: HttpRequest,
-): Promise<Result<HttpResponse, NetworkError | ServerError>> => {
+): Promise<Result<HttpResponse, HttpRequestFailure>> => {
   if (request.signal?.aborted === true) {
-    return failure(new NetworkError("aborted"))
+    return failure({ type: "network", message: "aborted" })
   }
   const parsed = URL.parse(request.url)
   const server = servers.find((candidate) => candidate.url === parsed?.origin)
   if (parsed === null || server === undefined || server.unreachable) {
-    return failure(new NetworkError(`no reachable in-memory Blossom server at ${request.url}`))
+    return failure({ type: "network", message: `no reachable in-memory Blossom server at ${request.url}` })
   }
-  const response = await route(servers, server, request)
+  const response = route(servers, server, request)
   if (response.status >= 400) {
-    return failure(new ServerError(response.status, response.headers.get("x-reason") ?? ""))
+    return failure({ type: "server", status: response.status, message: response.headers.get("x-reason") ?? "" })
   }
   return ok(response)
 }
@@ -285,19 +322,21 @@ const respond = async (
 /**
  * Create an {@link InMemoryBlossomNetwork}: add servers with `createServer`, seed or assert their
  * blobs through the returned {@link InMemoryBlossomServer} handles, and hand `httpClient` to the
- * use-case factories under test. Requests are checked for a valid kind-24242 authorisation event
- * where the BUDs require one, and mirroring fetches from sibling servers in the network.
+ * use-case factories under test. Where the BUDs require a token, a request must carry a BUD-11 one this server
+ * accepts: kind 24242 with a valid signature, a `created_at` at most sixty seconds ahead of the clock, an `expiration` not yet passed, one
+ * `t` verb matching the endpoint, `server` tags (if any) naming this server's domain, and an `x` tag for the blob a
+ * write names. Mirroring fetches from sibling servers in the network.
  */
 export const createInMemoryBlossomNetwork = (): InMemoryBlossomNetwork => {
   const servers: Array<ServerState> = []
 
   const createServer = (url: string): InMemoryBlossomServer => {
     const branded = createServerUrl(url)
-    if (!branded.success) throw new TypeError(branded.error.message)
-    if (servers.some((existing) => existing.url === branded.value)) {
-      throw new TypeError(`a server already exists at ${branded.value}`)
+    if (branded === null) throw new TypeError(`not a valid http or https server URL: ${url}`)
+    if (servers.some((existing) => existing.url === branded)) {
+      throw new TypeError(`a server already exists at ${branded}`)
     }
-    const state: ServerState = { url: branded.value, blobs: new Map(), unreachable: false }
+    const state: ServerState = { url: branded, blobs: new Map(), unreachable: false }
     servers.push(state)
     return {
       url: state.url,

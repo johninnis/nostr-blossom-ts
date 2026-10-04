@@ -2,17 +2,16 @@ import { assert, assertEquals } from "@std/assert"
 import { createLocalSigner, generateSecretKey } from "@innis/nostr-core"
 import { createMirrorToServers } from "../../src/application/mirror-to-servers.ts"
 import { createSha256 } from "../../src/domain/blob.ts"
-import { adaptSigner } from "../../src/infrastructure/signer-adapter.ts"
 import { createInMemoryBlossomNetwork } from "../../testing.ts"
 
-const signer = adaptSigner(createLocalSigner(generateSecretKey()))
+const signer = createLocalSigner(generateSecretKey())
 
 Deno.test("mirrorToServers mirrors a stored blob to every server", async () => {
   const network = createInMemoryBlossomNetwork()
   const source = network.createServer("https://one.example.com")
   const first = network.createServer("https://two.example.com")
   const second = network.createServer("https://three.example.com")
-  const descriptor = await source.seedBlob({ data: new TextEncoder().encode("file-content") })
+  const descriptor = source.seedBlob({ data: new TextEncoder().encode("file-content") })
   const mirrorToServers = createMirrorToServers({ signer, httpClient: network.httpClient })
 
   const outcomes = await mirrorToServers({
@@ -33,7 +32,7 @@ Deno.test("mirrorToServers reports a failing server without stopping the others"
   const healthy = network.createServer("https://two.example.com")
   const down = network.createServer("https://three.example.com")
   down.setUnreachable(true)
-  const descriptor = await source.seedBlob({ data: new TextEncoder().encode("file-content") })
+  const descriptor = source.seedBlob({ data: new TextEncoder().encode("file-content") })
   const mirrorToServers = createMirrorToServers({ signer, httpClient: network.httpClient })
 
   const outcomes = await mirrorToServers({
@@ -52,12 +51,12 @@ Deno.test("mirrorToServers resolves to no outcomes for no servers", async () => 
   const network = createInMemoryBlossomNetwork()
   const mirrorToServers = createMirrorToServers({ signer, httpClient: network.httpClient })
   const sha256 = createSha256("a".repeat(64))
-  assert(sha256.success)
+  assert(sha256 !== null)
 
   const outcomes = await mirrorToServers({
     servers: [],
-    sourceUrl: `https://one.example.com/${sha256.value}`,
-    sha256: sha256.value,
+    sourceUrl: `https://one.example.com/${sha256}`,
+    sha256: sha256,
   })
 
   assertEquals(outcomes.length, 0)

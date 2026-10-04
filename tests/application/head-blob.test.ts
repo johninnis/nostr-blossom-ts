@@ -9,12 +9,12 @@ import {
 import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
 
 const serverResult = createServerUrl("https://blossom.example.com")
-assert(serverResult.success)
-const testServerUrl = serverResult.value
+assert(serverResult !== null)
+const testServerUrl = serverResult
 
 const hashResult = createSha256("a".repeat(64))
-assert(hashResult.success)
-const testHash = hashResult.value
+assert(hashResult !== null)
+const testHash = hashResult
 
 Deno.test("headBlob returns content type and length", async () => {
   const httpClient = createFakeHttpClient(
@@ -42,17 +42,17 @@ Deno.test("headBlob omits length when header missing or malformed", async () => 
   assertEquals(result.value.contentType, "application/octet-stream")
 })
 
-Deno.test("headBlob returns server error on 404", async () => {
+Deno.test("headBlob returns a server failure on 404", async () => {
   const httpClient = createFakeHttpClient(createFakeSuccessResponse(404, ""))
   const headBlob = createHeadBlob({ signer: createFakeSigner(), httpClient })
 
   const result = await headBlob({ serverUrl: testServerUrl, sha256: testHash })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "ServerError")
+  assertEquals(result.error.type, "server")
 })
 
-Deno.test("headBlob forwards timeoutMs and signal to the http client", async () => {
+Deno.test("headBlob forwards its signal to the http client", async () => {
   const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
   const headBlob = createHeadBlob({ signer: createFakeSigner(), httpClient: captured.client })
   const controller = new AbortController()
@@ -60,13 +60,23 @@ Deno.test("headBlob forwards timeoutMs and signal to the http client", async () 
   const result = await headBlob({
     serverUrl: testServerUrl,
     sha256: testHash,
-    timeoutMs: 5000,
     signal: controller.signal,
   })
 
   assert(result.success)
   const request = captured.requests[0]
   assert(request)
-  assertEquals(request.timeoutMs, 5000)
   assertEquals(request.signal, controller.signal)
 })
+
+for (const contentLength of ["-1", "1.5", "1e3", ""]) {
+  Deno.test(`headBlob omits a content length of "${contentLength}", which is not a whole number of bytes`, async () => {
+    const httpClient = createFakeHttpClient(createFakeSuccessResponse(200, "", { "content-length": contentLength }))
+    const result = await createHeadBlob({ signer: createFakeSigner(), httpClient })({
+      serverUrl: testServerUrl,
+      sha256: testHash,
+    })
+    assert(result.success)
+    assertEquals(result.value.contentLength, undefined)
+  })
+}

@@ -1,8 +1,7 @@
 import { assert, assertEquals } from "@std/assert"
 import type { HttpClient, HttpRequest } from "@innis/nostr-core"
-import { createLocalSigner, failure, generateSecretKey, NetworkError, ServerError } from "@innis/nostr-core"
+import { createLocalSigner, failure, generateSecretKey } from "@innis/nostr-core"
 import { createUpload } from "../../src/application/upload-blob.ts"
-import { adaptSigner } from "../../src/infrastructure/signer-adapter.ts"
 import { createInMemoryBlossomNetwork } from "../../testing.ts"
 import {
   createCapturingHttpClient,
@@ -14,8 +13,8 @@ import {
 import { createServerUrl } from "../../src/domain/blob.ts"
 
 const testServerUrlResult = createServerUrl("https://blossom.example.com")
-assert(testServerUrlResult.success)
-const testServerUrl = testServerUrlResult.value
+assert(testServerUrlResult !== null)
+const testServerUrl = testServerUrlResult
 
 const descriptor = {
   url: "https://blossom.example.com/abc.png",
@@ -57,17 +56,17 @@ Deno.test("upload targets /upload by default and /media when requested", async (
   assertEquals(media.requests[0]?.url, "https://blossom.example.com/media")
 })
 
-Deno.test("upload returns error on signing failure", async () => {
+Deno.test("upload returns the signing failure", async () => {
   const httpClient = createFakeHttpClient(createFakeSuccessResponse(200, "{}"))
   const upload = createUpload({ signer: createFailingSigner(), httpClient })
 
   const result = await upload({ serverUrl: testServerUrl, file: testFile() })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "SigningError")
+  assertEquals(result.error.type, "sign-failed")
 })
 
-Deno.test("upload returns server error on 4xx", async () => {
+Deno.test("upload returns a server failure on 4xx", async () => {
   const httpClient = createFakeHttpClient(
     createFakeSuccessResponse(413, "File too large", { "x-reason": "File too large" }),
   )
@@ -76,10 +75,10 @@ Deno.test("upload returns server error on 4xx", async () => {
   const result = await upload({ serverUrl: testServerUrl, file: testFile() })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "ServerError")
+  assertEquals(result.error.type, "server")
 })
 
-Deno.test("upload returns validation error on malformed descriptor", async () => {
+Deno.test("upload returns a validation failure on malformed descriptor", async () => {
   const httpClient = createFakeHttpClient(
     createFakeSuccessResponse(200, JSON.stringify({ not: "a descriptor" })),
   )
@@ -88,10 +87,19 @@ Deno.test("upload returns validation error on malformed descriptor", async () =>
   const result = await upload({ serverUrl: testServerUrl, file: testFile() })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result.error.type, "validation")
 })
 
-Deno.test("upload forwards timeoutMs and signal to the http client", async () => {
+Deno.test("upload returns a validation failure, not a network one, when the descriptor body is not JSON", async () => {
+  const httpClient = createFakeHttpClient(createFakeSuccessResponse(200, "<html>not json</html>"))
+  const result = await createUpload({ signer: createFakeSigner(), httpClient })({
+    serverUrl: testServerUrl,
+    file: testFile(),
+  })
+  assertEquals(result, failure({ type: "validation", message: "malformed Blossom blob descriptor" }))
+})
+
+Deno.test("upload forwards its signal to the http client", async () => {
   const captured = createCapturingHttpClient(createFakeSuccessResponse(200, JSON.stringify(descriptor)))
   const upload = createUpload({ signer: createFakeSigner(), httpClient: captured.client })
   const controller = new AbortController()
@@ -99,18 +107,16 @@ Deno.test("upload forwards timeoutMs and signal to the http client", async () =>
   const result = await upload({
     serverUrl: testServerUrl,
     file: testFile(),
-    timeoutMs: 5000,
     signal: controller.signal,
   })
 
   assert(result.success)
   const request = captured.requests[0]
   assert(request)
-  assertEquals(request.timeoutMs, 5000)
   assertEquals(request.signal, controller.signal)
 })
 
-const signer = adaptSigner(createLocalSigner(generateSecretKey()))
+const signer = createLocalSigner(generateSecretKey())
 
 const isCheckRequest = (request: HttpRequest): boolean =>
   request.method === "HEAD" && URL.parse(request.url)?.pathname === "/upload"
@@ -164,15 +170,13 @@ Deno.test("upload with check fails with the server's status and reason before se
   const server = network.createServer("https://one.example.com")
   const { httpClient, requests } = recording(
     network.httpClient,
-    () => Promise.resolve(failure(new ServerError(413, "blob exceeds 1 byte limit"))),
+    () => Promise.resolve(failure({ type: "server", status: 413, message: "blob exceeds 1 byte limit" })),
   )
 
   const result = await createUpload({ signer, httpClient })({ serverUrl: server.url, file: testFile(), check: true })
 
   assert(!result.success)
-  assert(result.error instanceof ServerError)
-  assertEquals(result.error.status, 413)
-  assertEquals(result.error.message, "blob exceeds 1 byte limit")
+  assertEquals(result.error, { type: "server", status: 413, message: "blob exceeds 1 byte limit" })
   assertEquals(requests.map((request) => request.method), ["HEAD"])
   assertEquals(server.getStoredBlobs().length, 0)
 })
@@ -182,7 +186,7 @@ Deno.test("upload with check proceeds when the server has no check endpoint", as
   const server = network.createServer("https://one.example.com")
   const { httpClient } = recording(
     network.httpClient,
-    () => Promise.resolve(failure(new ServerError(405, "method not allowed"))),
+    () => Promise.resolve(failure({ type: "server", status: 405, message: "method not allowed" })),
   )
 
   const result = await createUpload({ signer, httpClient })({ serverUrl: server.url, file: testFile(), check: true })
@@ -196,12 +200,27 @@ Deno.test("upload with check fails without sending bytes when the check cannot r
   const server = network.createServer("https://one.example.com")
   const { httpClient, requests } = recording(
     network.httpClient,
-    () => Promise.resolve(failure(new NetworkError("offline"))),
+    () => Promise.resolve(failure({ type: "network", message: "offline" })),
   )
 
   const result = await createUpload({ signer, httpClient })({ serverUrl: server.url, file: testFile(), check: true })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "NetworkError")
+  assertEquals(result.error.type, "network")
   assertEquals(requests.map((request) => request.method), ["HEAD"])
+})
+
+Deno.test("upload to the media endpoint with check runs the BUD-05 media pre-flight, not the upload one", async () => {
+  const network = createInMemoryBlossomNetwork()
+  const server = network.createServer("https://one.example.com")
+  const { httpClient, requests } = recording(network.httpClient)
+  const upload = createUpload({ signer, httpClient })
+
+  const result = await upload({ serverUrl: server.url, file: testFile(), endpoint: "media", check: true })
+
+  assert(result.success)
+  assertEquals(requests.map((request) => `${request.method} ${request.url}`), [
+    "HEAD https://one.example.com/media",
+    "PUT https://one.example.com/media",
+  ])
 })

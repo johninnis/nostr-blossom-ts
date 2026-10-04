@@ -43,8 +43,8 @@ Deno.test("parseServerList returns an empty list when there are no server tags",
 })
 
 const mediaResult = createServerUrl("https://media.example")
-assert(mediaResult.success)
-const MEDIA: ServerUrl = mediaResult.value
+assert(mediaResult !== null)
+const MEDIA: ServerUrl = mediaResult
 
 Deno.test("addServerTag appends a server tag when the server is not listed", () => {
   const tags: Array<Tag> = [["server", "https://other.example"]]

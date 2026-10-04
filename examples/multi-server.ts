@@ -1,5 +1,3 @@
-// deno-lint-ignore-file no-console
-
 /**
  * Walkthrough of the main features of @innis/nostr-blossom.
  *
@@ -12,7 +10,6 @@
 
 import { createLocalSigner, generateSecretKey } from "@innis/nostr-core"
 import {
-  adaptSigner,
   buildBlobUrl,
   buildFallbackUrls,
   createGetBlobWithFallback,
@@ -26,14 +23,16 @@ const banner = (title: string): void => {
   console.log(`\n--- ${title} ---`)
 }
 
-// 1. Wire the dependency bundle once: a Result-returning signer and an HttpClient.
+// 1. Wire the dependency bundle once: a signer and an HttpClient.
 banner("1. Wiring")
 const localSigner = createLocalSigner(generateSecretKey())
-const pubkey = await localSigner.getPublicKey()
+const localPubkey = await localSigner.getPublicKey()
+if (!localPubkey.success) throw new Error(`a local signer always has its key: ${localPubkey.error.message}`)
+const pubkey = localPubkey.value
 const network = createInMemoryBlossomNetwork()
 const primary = network.createServer("https://one.example.com")
 const mirror = network.createServer("https://two.example.com")
-const deps = { signer: adaptSigner(localSigner), httpClient: network.httpClient }
+const deps = { signer: localSigner, httpClient: network.httpClient }
 console.log("servers:", primary.url, mirror.url)
 
 // 2. Upload to the preferred server, mirror to the rest (BUD-02 + BUD-04).
@@ -45,7 +44,7 @@ if (!uploaded.success) throw new Error(uploaded.error.message)
 console.log("stored at:  ", uploaded.value.blob.url)
 console.log("mirrors ok: ", uploaded.value.mirrors.every((outcome) => outcome.result.success))
 
-// 3. Stream the account's blobs from every server as each replies (BUD-02 over a BUD-03 list).
+// 3. Stream the account's blobs from every server as each replies (BUD-12 over a BUD-03 list).
 banner("3. List across servers")
 const listAcrossServers = createListBlobsAcrossServers(deps)
 await new Promise<void>((resolve) => {
@@ -69,7 +68,7 @@ console.log("fallbacks:   ", buildFallbackUrls(uploaded.value.blob.url, [mirror.
 // 5. Verified fallback download: a lying server is skipped, the honest one serves (BUD-01 + BUD-03).
 banner("5. Verified download with fallback")
 const liar = network.createServer("https://liar.example.com")
-await liar.seedBlob({ data: new TextEncoder().encode("tampered content"), sha256 })
+liar.seedBlob({ data: new TextEncoder().encode("tampered content"), sha256 })
 const getBlobWithFallback = createGetBlobWithFallback(deps)
 const fetched = await getBlobWithFallback({ servers: [liar.url, mirror.url], sha256 })
 if (!fetched.success) throw new Error(fetched.error.message)

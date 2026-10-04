@@ -7,8 +7,7 @@ import { collectServerOutcomes } from "./server-outcomes.ts"
 interface DeleteFromServersInput {
   readonly servers: ReadonlyArray<ServerUrl>
   readonly sha256: Sha256
-  readonly timeoutMs?: number
-  readonly signal?: AbortSignal
+  readonly signal?: AbortSignal | undefined
 }
 
 /**
@@ -26,7 +25,6 @@ export const createDeleteFromServers = (
       deleteBlob({
         serverUrl,
         sha256: input.sha256,
-        timeoutMs: input.timeoutMs,
         signal: input.signal,
       }))
 }

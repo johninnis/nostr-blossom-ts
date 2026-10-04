@@ -19,54 +19,53 @@ const validDescriptor = {
 Deno.test("createSha256 accepts valid 64-char hex", () => {
   const hash = "a".repeat(64)
   const result = createSha256(hash)
-  assert(result.success)
-  assertEquals(result.value, hash)
+  assert(result !== null)
+  assertEquals(result, hash)
 })
 
 Deno.test("createSha256 normalises to lowercase", () => {
   const hash = "A".repeat(64)
   const result = createSha256(hash)
-  assert(result.success)
-  assertEquals(result.value, "a".repeat(64))
+  assert(result !== null)
+  assertEquals(result, "a".repeat(64))
 })
 
 Deno.test("createSha256 rejects short string", () => {
   const result = createSha256("abc")
-  assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result, null)
 })
 
 Deno.test("createSha256 rejects non-hex characters", () => {
   const result = createSha256("g".repeat(64))
-  assert(!result.success)
+  assertEquals(result, null)
 })
 
 Deno.test("createServerUrl accepts https URL", () => {
   const result = createServerUrl("https://blossom.example.com")
-  assert(result.success)
-  assertEquals(result.value, "https://blossom.example.com")
+  assert(result !== null)
+  assertEquals(result, "https://blossom.example.com")
 })
 
 Deno.test("createServerUrl strips trailing slashes", () => {
   const result = createServerUrl("https://blossom.example.com///")
-  assert(result.success)
-  assertEquals(result.value, "https://blossom.example.com")
+  assert(result !== null)
+  assertEquals(result, "https://blossom.example.com")
 })
 
 Deno.test("createServerUrl accepts http URL", () => {
   const result = createServerUrl("http://localhost:3000")
-  assert(result.success)
-  assertEquals(result.value, "http://localhost:3000")
+  assert(result !== null)
+  assertEquals(result, "http://localhost:3000")
 })
 
 Deno.test("createServerUrl rejects ftp", () => {
   const result = createServerUrl("ftp://example.com")
-  assert(!result.success)
+  assertEquals(result, null)
 })
 
 Deno.test("createServerUrl rejects garbage", () => {
   const result = createServerUrl("not a url")
-  assert(!result.success)
+  assertEquals(result, null)
 })
 
 Deno.test("buildListQueryString empty query", () => {
@@ -87,45 +86,41 @@ Deno.test("buildListQueryString with partial params", () => {
   assertEquals(qs, "?limit=5")
 })
 
-Deno.test("computeSha256 produces valid hex hash", async () => {
+Deno.test("computeSha256 produces valid hex hash", () => {
   const data = new TextEncoder().encode("hello world")
-  const result = await computeSha256(data.buffer)
-  assert(result.success)
-  assertEquals(result.value.length, 64)
-  assert(/^[0-9a-f]{64}$/.test(result.value))
+  const result = computeSha256(data.buffer)
+  assertEquals(result.length, 64)
+  assert(/^[0-9a-f]{64}$/.test(result))
 })
 
-Deno.test("computeSha256 produces correct known hash", async () => {
+Deno.test("computeSha256 produces correct known hash", () => {
   const data = new TextEncoder().encode("hello world")
-  const result = await computeSha256(data.buffer)
-  assert(result.success)
-  assertEquals(result.value, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
+  const result = computeSha256(data.buffer)
+  assertEquals(result, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
 })
 
-Deno.test("computeSha256 is deterministic", async () => {
+Deno.test("computeSha256 is deterministic", () => {
   const data = new TextEncoder().encode("test")
-  const first = await computeSha256(data.buffer)
-  const second = await computeSha256(data.buffer)
-  assert(first.success && second.success)
-  assertEquals(first.value, second.value)
+  const first = computeSha256(data.buffer)
+  const second = computeSha256(data.buffer)
+  assertEquals(first, second)
 })
 
 Deno.test("parseBlobDescriptor accepts a numeric uploaded timestamp", () => {
   const result = parseBlobDescriptor(validDescriptor)
-  assert(result.success)
-  assertEquals(result.value.uploaded, 1704067200)
+  assert(result !== null)
+  assertEquals(result.uploaded, 1704067200)
 })
 
 Deno.test("parseBlobDescriptor rejects a string uploaded timestamp", () => {
   const result = parseBlobDescriptor({ ...validDescriptor, uploaded: "2024-01-01T00:00:00Z" })
-  assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result, null)
 })
 
 Deno.test("parseBlobDescriptor omits nip94 when the field is absent", () => {
   const result = parseBlobDescriptor(validDescriptor)
-  assert(result.success)
-  assertEquals(result.value.nip94, undefined)
+  assert(result !== null)
+  assertEquals(result.nip94, undefined)
 })
 
 Deno.test("parseBlobDescriptor parses a BUD-08 nip94 tag list to a FileMetadata", () => {
@@ -141,8 +136,8 @@ Deno.test("parseBlobDescriptor parses a BUD-08 nip94 tag list to a FileMetadata"
       ["blurhash", "L55iUPo*4hf;kHkCj^ahXFa$xjod"],
     ],
   })
-  assert(result.success)
-  assertEquals(result.value.nip94, {
+  assert(result !== null)
+  assertEquals(result.nip94, {
     url: validDescriptor.url,
     mimeType: "image/png",
     hash: "a".repeat(64),
@@ -155,31 +150,33 @@ Deno.test("parseBlobDescriptor parses a BUD-08 nip94 tag list to a FileMetadata"
 
 Deno.test("parseBlobDescriptor rejects a nip94 field that is not a tag list", () => {
   const result = parseBlobDescriptor({ ...validDescriptor, nip94: { dim: "800x600" } })
-  assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result, null)
 })
 
 Deno.test("parseBlobDescriptor rejects a nip94 tag list without a url", () => {
   const result = parseBlobDescriptor({ ...validDescriptor, nip94: [["dim", "800x600"]] })
-  assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result, null)
 })
 
 Deno.test("parseBlobDescriptorList brands every descriptor in the array", () => {
   const result = parseBlobDescriptorList([validDescriptor, { ...validDescriptor, sha256: "b".repeat(64) }])
-  assert(result.success)
-  assertEquals(result.value.length, 2)
-  assertEquals(result.value[0]?.sha256, "a".repeat(64))
+  assert(result !== null)
+  assertEquals(result.length, 2)
+  assertEquals(result[0]?.sha256, "a".repeat(64))
 })
 
 Deno.test("parseBlobDescriptorList rejects a non-array value", () => {
   const result = parseBlobDescriptorList(validDescriptor)
-  assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result, null)
 })
 
-Deno.test("parseBlobDescriptorList fails on the first malformed element", () => {
+Deno.test("parseBlobDescriptorList returns null when any element is malformed", () => {
   const result = parseBlobDescriptorList([validDescriptor, { ...validDescriptor, sha256: "not-hex" }])
-  assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result, null)
 })
+
+for (const [field, value] of [["size", -1], ["size", 1.5], ["uploaded", -1], ["uploaded", 1.5]] as const) {
+  Deno.test(`parseBlobDescriptor rejects a ${field} of ${value}, which is not a whole number of bytes or seconds`, () => {
+    assertEquals(parseBlobDescriptor({ ...validDescriptor, [field]: value }), null)
+  })
+}

@@ -2,20 +2,21 @@ import { assert, assertEquals } from "@std/assert"
 import { createLocalSigner, generateSecretKey } from "@innis/nostr-core"
 import type { ListAcrossServersUpdate } from "../../src/application/list-across-servers.ts"
 import { createListBlobsAcrossServers } from "../../src/application/list-across-servers.ts"
-import { adaptSigner } from "../../src/infrastructure/signer-adapter.ts"
 import { createServerUrl } from "../../src/domain/blob.ts"
 import type { ServerUrl } from "../../src/domain/types.ts"
 import { createFakeHttpClient, createFakeSuccessResponse } from "../_helpers/fakes.ts"
 import { createInMemoryBlossomNetwork } from "../../testing.ts"
 
 const localSigner = createLocalSigner(generateSecretKey())
-const signer = adaptSigner(localSigner)
-const testPubkey = await localSigner.getPublicKey()
+const signer = localSigner
+const localPubkey = await localSigner.getPublicKey()
+if (!localPubkey.success) throw new Error("a local signer always has its key")
+const testPubkey = localPubkey.value
 
 const serverUrlFixture = (url: string): ServerUrl => {
   const result = createServerUrl(url)
-  assert(result.success)
-  return result.value
+  assert(result !== null)
+  return result
 }
 
 const collectUntilAllResponded = (
@@ -34,9 +35,9 @@ Deno.test("listBlobsAcrossServers merges blobs by hash as each server replies", 
   const network = createInMemoryBlossomNetwork()
   const first = network.createServer("https://one.example.com")
   const second = network.createServer("https://two.example.com")
-  const shared = await first.seedBlob({ data: new TextEncoder().encode("shared"), pubkey: testPubkey })
-  await second.seedBlob({ data: new TextEncoder().encode("shared"), pubkey: testPubkey })
-  const extra = await second.seedBlob({ data: new TextEncoder().encode("only-on-two"), pubkey: testPubkey })
+  const shared = first.seedBlob({ data: new TextEncoder().encode("shared"), pubkey: testPubkey })
+  second.seedBlob({ data: new TextEncoder().encode("shared"), pubkey: testPubkey })
+  const extra = second.seedBlob({ data: new TextEncoder().encode("only-on-two"), pubkey: testPubkey })
   const listAcrossServers = createListBlobsAcrossServers({ signer, httpClient: network.httpClient })
 
   const updates = await collectUntilAllResponded(
@@ -58,7 +59,7 @@ Deno.test("listBlobsAcrossServers delivers an update per server without waiting 
   const network = createInMemoryBlossomNetwork()
   const first = network.createServer("https://one.example.com")
   const second = network.createServer("https://two.example.com")
-  await first.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
+  first.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
   const listAcrossServers = createListBlobsAcrossServers({ signer, httpClient: network.httpClient })
 
   const updates = await collectUntilAllResponded(
@@ -75,7 +76,7 @@ Deno.test("listBlobsAcrossServers reports a failing server and keeps the others'
   const healthy = network.createServer("https://one.example.com")
   const down = network.createServer("https://two.example.com")
   down.setUnreachable(true)
-  await healthy.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
+  healthy.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
   const listAcrossServers = createListBlobsAcrossServers({ signer, httpClient: network.httpClient })
 
   const updates = await collectUntilAllResponded(
@@ -113,7 +114,7 @@ Deno.test("listBlobsAcrossServers records a server once when it lists a blob twi
 Deno.test("listBlobsAcrossServers stops delivering updates once aborted", async () => {
   const network = createInMemoryBlossomNetwork()
   const server = network.createServer("https://one.example.com")
-  await server.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
+  server.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
   const listAcrossServers = createListBlobsAcrossServers({ signer, httpClient: network.httpClient })
   const updates: Array<ListAcrossServersUpdate> = []
 
@@ -131,7 +132,7 @@ Deno.test("listBlobsAcrossServers stops delivering updates once aborted", async 
 Deno.test("listBlobsAcrossServers honours an already-aborted caller signal", async () => {
   const network = createInMemoryBlossomNetwork()
   const server = network.createServer("https://one.example.com")
-  await server.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
+  server.seedBlob({ data: new TextEncoder().encode("blob"), pubkey: testPubkey })
   const listAcrossServers = createListBlobsAcrossServers({ signer, httpClient: network.httpClient })
   const controller = new AbortController()
   controller.abort()

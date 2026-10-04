@@ -21,13 +21,11 @@ export interface BlobDescriptor {
 /** The `t`-tag verb of a kind-24242 authorisation event, identifying the endpoint being authorised (BUD-11). */
 export type AuthAction = "get" | "upload" | "list" | "delete" | "media"
 
+/** The endpoint a blob is sent through, which is also its token's verb: `upload` stores the bytes as sent (BUD-02), `media` lets the server optimise them first (BUD-05). Each has its own `HEAD` pre-flight (BUD-06, BUD-05). */
+export type UploadEndpoint = Extract<AuthAction, "upload" | "media">
+
 /** The NIP-56 report category sent by {@link createReportBlob}. */
 export type ReportType = "nudity" | "malware" | "profanity" | "illegal" | "spam" | "impersonation" | "other"
-
-/** Event kind for Blossom authorisation events (BUD-01). */
-export const BLOSSOM_AUTH_EVENT_KIND = 24242
-/** Event kind for NIP-56 reports, used by the Blossom `/report` endpoint (BUD-09). */
-export const REPORT_EVENT_KIND = 1984
 
 /** Optional pagination and time-range parameters for {@link createListBlobs}, serialised by {@link buildListQueryString}. */
 export interface ListBlobsQuery {
@@ -40,5 +38,5 @@ export interface ListBlobsQuery {
 /** Metadata returned by {@link createHeadBlob}: the blob's content type, plus its content length when the server reports a parseable `Content-Length`. */
 export interface BlobHeaders {
   readonly contentType: string
-  readonly contentLength?: number
+  readonly contentLength?: number | undefined
 }

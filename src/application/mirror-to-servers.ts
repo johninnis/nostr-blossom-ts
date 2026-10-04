@@ -8,8 +8,7 @@ interface MirrorToServersInput {
   readonly servers: ReadonlyArray<ServerUrl>
   readonly sourceUrl: string
   readonly sha256: Sha256
-  readonly timeoutMs?: number
-  readonly signal?: AbortSignal
+  readonly signal?: AbortSignal | undefined
 }
 
 /**
@@ -29,7 +28,6 @@ export const createMirrorToServers = (
         serverUrl,
         sourceUrl: input.sourceUrl,
         sha256: input.sha256,
-        timeoutMs: input.timeoutMs,
         signal: input.signal,
       }))
 }

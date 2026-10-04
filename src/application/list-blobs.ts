@@ -1,5 +1,5 @@
 import type { PublicKey, Result } from "@innis/nostr-core"
-import type { BlossomError } from "../domain/errors.ts"
+import type { BlossomFailure } from "../domain/failure/blossom-failure.ts"
 import { buildListQueryString, parseBlobDescriptorList } from "../domain/blob.ts"
 import type { BlobDescriptor, ListBlobsQuery, ServerUrl } from "../domain/types.ts"
 import type { BlossomDeps } from "./ports.ts"
@@ -9,15 +9,14 @@ import { parseJsonResponse } from "./parse-response.ts"
 interface ListBlobsInput {
   readonly serverUrl: ServerUrl
   readonly pubkey: PublicKey
-  readonly query?: ListBlobsQuery
-  readonly timeoutMs?: number
-  readonly signal?: AbortSignal
+  readonly query?: ListBlobsQuery | undefined
+  readonly signal?: AbortSignal | undefined
 }
 
-/** Build the list use-case: `GET /list/<pubkey>` with an optional {@link ListBlobsQuery}, returning the server's blobs as a validated `ReadonlyArray<BlobDescriptor>`. */
+/** Build the list use-case (BUD-12): `GET /list/<pubkey>` with an optional {@link ListBlobsQuery}, returning the server's blobs as a validated `ReadonlyArray<BlobDescriptor>`. */
 export const createListBlobs = (
   deps: BlossomDeps,
-): (input: ListBlobsInput) => Promise<Result<ReadonlyArray<BlobDescriptor>, BlossomError>> => {
+): (input: ListBlobsInput) => Promise<Result<ReadonlyArray<BlobDescriptor>, BlossomFailure>> => {
   const authorisedRequest = createAuthorisedRequest(deps)
 
   return async (input) => {
@@ -29,10 +28,9 @@ export const createListBlobs = (
       content: "List Blobs",
       method: "GET",
       path: `/list/${input.pubkey}${queryString}`,
-      timeoutMs: input.timeoutMs,
       signal: input.signal,
     })
 
-    return parseJsonResponse(response, parseBlobDescriptorList)
+    return parseJsonResponse(response, parseBlobDescriptorList, "blob list")
   }
 }

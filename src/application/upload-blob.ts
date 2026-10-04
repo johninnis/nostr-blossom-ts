@@ -1,8 +1,8 @@
 import type { Result } from "@innis/nostr-core"
-import { failure, ServerError } from "@innis/nostr-core"
-import type { BlossomError } from "../domain/errors.ts"
+import { failure } from "@innis/nostr-core"
+import type { BlossomFailure } from "../domain/failure/blossom-failure.ts"
 import { computeSha256, parseBlobDescriptor } from "../domain/blob.ts"
-import type { BlobDescriptor, ServerUrl } from "../domain/types.ts"
+import type { BlobDescriptor, ServerUrl, UploadEndpoint } from "../domain/types.ts"
 import type { BlossomDeps } from "./ports.ts"
 import { createAuthorisedRequest } from "./authorised-request.ts"
 import { createCheckUpload } from "./check-upload.ts"
@@ -11,24 +11,23 @@ import { parseJsonResponse } from "./parse-response.ts"
 interface UploadInput {
   readonly serverUrl: ServerUrl
   readonly file: File
-  readonly endpoint?: "upload" | "media"
-  readonly check?: boolean
-  readonly timeoutMs?: number
-  readonly signal?: AbortSignal
+  readonly endpoint?: UploadEndpoint | undefined
+  readonly check?: boolean | undefined
+  readonly signal?: AbortSignal | undefined
 }
-
-type UploadFn = (input: UploadInput) => Promise<Result<BlobDescriptor, BlossomError>>
 
 /**
  * Build the upload use-case: hash a `File`, sign an `upload`/`media` auth event, and `PUT` it to `/upload`
  * (or `/media` when `input.endpoint === "media"`). Resolves to the stored {@link BlobDescriptor}.
  *
- * With `check: true` a BUD-06 check (see {@link createCheckUpload}) runs first with the same hash, size
- * and content type: a `rejected` verdict fails with a `ServerError` carrying the server's status and
+ * With `check: true` the endpoint's pre-flight (see {@link createCheckUpload}) runs first with the same hash, size
+ * and content type: a `rejected` verdict fails with a `ServerFailure` carrying the server's status and
  * reason before any bytes are sent; an `unsupported` verdict is not a failure — the upload proceeds and
  * decides.
  */
-export const createUpload = (deps: BlossomDeps): UploadFn => {
+export const createUpload = (
+  deps: BlossomDeps,
+): (input: UploadInput) => Promise<Result<BlobDescriptor, BlossomFailure>> => {
   const authorisedRequest = createAuthorisedRequest(deps)
   const checkUpload = createCheckUpload(deps)
 
@@ -36,9 +35,7 @@ export const createUpload = (deps: BlossomDeps): UploadFn => {
     const endpoint = input.endpoint ?? "upload"
     const contentType = input.file.type || "application/octet-stream"
     const buffer = await input.file.arrayBuffer()
-    const hashResult = await computeSha256(buffer)
-    if (!hashResult.success) return hashResult
-    const sha256 = hashResult.value
+    const sha256 = computeSha256(buffer)
 
     if (input.check === true) {
       const checked = await checkUpload({
@@ -46,12 +43,12 @@ export const createUpload = (deps: BlossomDeps): UploadFn => {
         sha256,
         size: buffer.byteLength,
         contentType,
-        timeoutMs: input.timeoutMs,
+        endpoint,
         signal: input.signal,
       })
       if (!checked.success) return checked
       if (checked.value.verdict === "rejected") {
-        return failure(new ServerError(checked.value.status, checked.value.reason))
+        return failure({ type: "server", status: checked.value.status, message: checked.value.reason })
       }
     }
 
@@ -67,10 +64,9 @@ export const createUpload = (deps: BlossomDeps): UploadFn => {
       },
       body: buffer,
       hashes: [sha256],
-      timeoutMs: input.timeoutMs,
       signal: input.signal,
     })
 
-    return parseJsonResponse(response, parseBlobDescriptor)
+    return parseJsonResponse(response, parseBlobDescriptor, "blob descriptor")
   }
 }

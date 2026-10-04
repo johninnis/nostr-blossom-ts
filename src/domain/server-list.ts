@@ -16,9 +16,9 @@ export const parseServerList = (tags: ReadonlyArray<Tag>): ReadonlyArray<ServerU
   const seen = new Set<string>()
   for (const raw of extractTagValues(tags, "server")) {
     const parsed = createServerUrl(raw)
-    if (parsed.success && !seen.has(parsed.value)) {
-      seen.add(parsed.value)
-      servers.push(parsed.value)
+    if (parsed !== null && !seen.has(parsed)) {
+      seen.add(parsed)
+      servers.push(parsed)
     }
   }
   return servers
@@ -26,8 +26,7 @@ export const parseServerList = (tags: ReadonlyArray<Tag>): ReadonlyArray<ServerU
 
 const isServerTagFor = (tag: Tag, serverUrl: ServerUrl): boolean => {
   if (tag[0] !== "server") return false
-  const parsed = createServerUrl(tag[1] ?? "")
-  return parsed.success && parsed.value === serverUrl
+  return createServerUrl(tag[1] ?? "") === serverUrl
 }
 
 /**

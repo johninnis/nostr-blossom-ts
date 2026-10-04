@@ -1,39 +1,43 @@
-import type { UnsignedEvent } from "@innis/nostr-core"
-import { now } from "@innis/nostr-core"
-import type { AuthAction, Sha256 } from "./types.ts"
-import { BLOSSOM_AUTH_EVENT_KIND } from "./types.ts"
+import type { Tag, UnsignedEvent } from "@innis/nostr-core"
+import { KIND_BLOSSOM_AUTHORISATION, now } from "@innis/nostr-core"
+import type { AuthAction, ServerUrl, Sha256 } from "./types.ts"
 
-/** Default lifetime, in seconds, of a Blossom auth event's NIP-40 `expiration` tag when no explicit expiry is supplied. */
-export const BLOSSOM_AUTH_EXPIRATION_SECONDS = 60
+// Deliberate: an hour, not a minute: the token must outlive a remote signer's approval and the upload of its body — see ADR-0003
+/** Default lifetime, in seconds, of a Blossom auth event's NIP-40 `expiration` tag when no explicit expiry is supplied: one hour. */
+export const BLOSSOM_AUTH_EXPIRATION_SECONDS = 60 * 60
 
 interface AuthEventInput {
   readonly action: AuthAction
   readonly content: string
   readonly expiration?: number
   readonly createdAt?: number
-  readonly hashes?: ReadonlyArray<Sha256>
+  readonly hashes?: ReadonlyArray<Sha256> | undefined
+  readonly server?: ServerUrl | undefined
 }
 
+const hashTags = (hashes: ReadonlyArray<Sha256>): ReadonlyArray<Tag> => hashes.map((hash) => ["x", hash])
+
+const serverTags = (server: ServerUrl | undefined): ReadonlyArray<Tag> =>
+  server === undefined ? [] : [["server", new URL(server).hostname]]
+
 /**
- * Build the unsigned kind-24242 Blossom authorisation event (BUD-01): a `t` action tag, a NIP-40
- * `expiration` tag (defaulting to {@link BLOSSOM_AUTH_EXPIRATION_SECONDS} after `createdAt`), and an
- * `x` hash tag per entry in `hashes`. `createdAt` defaults to the system clock — pin it for
- * deterministic output. The caller signs the result via `BlossomSigner.sign`.
+ * Build the unsigned kind-24242 Blossom authorisation event (BUD-11): a `t` action tag, a NIP-40 `expiration` tag
+ * (defaulting to {@link BLOSSOM_AUTH_EXPIRATION_SECONDS} after `createdAt`), an `x` tag per entry in `hashes`, and,
+ * when `server` is given, a `server` tag naming its domain, so the token is valid on that server alone. `createdAt`
+ * defaults to the system clock — pin it for deterministic output. The caller signs the result via
+ * `BlossomSigner.signEvent`.
  */
 export const createUnsignedAuthEvent = (input: AuthEventInput): UnsignedEvent => {
   const createdAt = input.createdAt ?? now()
   return {
-    kind: BLOSSOM_AUTH_EVENT_KIND,
+    kind: KIND_BLOSSOM_AUTHORISATION,
     content: input.content,
     created_at: createdAt,
     tags: [
       ["t", input.action],
       ["expiration", String(input.expiration ?? createdAt + BLOSSOM_AUTH_EXPIRATION_SECONDS)],
-      ...hashTags(input.hashes),
+      ...hashTags(input.hashes ?? []),
+      ...serverTags(input.server),
     ],
   }
 }
-
-const hashTags = (
-  hashes: ReadonlyArray<Sha256> | undefined,
-): ReadonlyArray<UnsignedEvent["tags"][number]> => hashes !== undefined ? hashes.map((h) => ["x", h]) : []

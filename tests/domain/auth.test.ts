@@ -1,17 +1,16 @@
 import { assert, assertEquals, assertExists } from "@std/assert"
 import { BLOSSOM_AUTH_EXPIRATION_SECONDS, createUnsignedAuthEvent } from "../../src/domain/auth.ts"
-import { encodeAuthHeader, now, parseEventId, parsePublicKey, parseSig } from "@innis/nostr-core"
-import type { NostrEvent } from "@innis/nostr-core"
-import { createSha256 } from "../../src/domain/blob.ts"
-import { BLOSSOM_AUTH_EVENT_KIND } from "../../src/domain/types.ts"
+import { now } from "@innis/nostr-core"
+import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
+import { KIND_BLOSSOM_AUTHORISATION } from "@innis/nostr-core"
 
 const testHashResult = createSha256("a".repeat(64))
-assert(testHashResult.success)
-const testHash = testHashResult.value
+assert(testHashResult !== null)
+const testHash = testHashResult
 
 Deno.test("createUnsignedAuthEvent sets kind 24242", () => {
   const event = createUnsignedAuthEvent({ action: "upload", content: "Upload Blob" })
-  assertEquals(event.kind, BLOSSOM_AUTH_EVENT_KIND)
+  assertEquals(event.kind, KIND_BLOSSOM_AUTHORISATION)
 })
 
 Deno.test("createUnsignedAuthEvent includes t tag", () => {
@@ -61,19 +60,18 @@ Deno.test("createUnsignedAuthEvent sets content", () => {
   assertEquals(event.content, "My custom content")
 })
 
-Deno.test("encodeAuthHeader produces Nostr-prefixed base64 string", () => {
-  const event: NostrEvent = {
-    kind: BLOSSOM_AUTH_EVENT_KIND,
-    content: "test",
-    created_at: 1000,
-    tags: [],
-    id: parseEventId("a".repeat(64)),
-    pubkey: parsePublicKey("b".repeat(64)),
-    sig: parseSig("0".repeat(128)),
-  }
-  const header = encodeAuthHeader(event)
-  assert(header.startsWith("Nostr "))
-  const encoded = header.slice(6)
-  assert(!encoded.includes("-"))
-  assert(!encoded.includes("_"))
+Deno.test("createUnsignedAuthEvent names the given server's domain in a server tag", () => {
+  const server = createServerUrl("https://CDN.Example.com:8443/ignored")
+  assert(server !== null)
+  const event = createUnsignedAuthEvent({ action: "delete", content: "Delete Blob", server })
+  assertEquals(event.tags.filter((tag) => tag[0] === "server"), [["server", "cdn.example.com"]])
+})
+
+Deno.test("createUnsignedAuthEvent leaves a token unscoped when no server is given", () => {
+  const event = createUnsignedAuthEvent({ action: "list", content: "List Blobs" })
+  assertEquals(event.tags.filter((tag) => tag[0] === "server"), [])
+})
+
+Deno.test("BLOSSOM_AUTH_EXPIRATION_SECONDS is one hour", () => {
+  assertEquals(BLOSSOM_AUTH_EXPIRATION_SECONDS, 3600)
 })

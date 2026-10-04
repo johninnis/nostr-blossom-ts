@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert"
-import { ok } from "@innis/nostr-core"
+import { ok, parseBlossomAuthHeader } from "@innis/nostr-core"
 import { createCheckUpload } from "../../src/application/check-upload.ts"
 import {
   createCapturingHttpClient,
@@ -11,12 +11,12 @@ import {
 import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
 
 const serverResult = createServerUrl("https://blossom.example.com")
-assert(serverResult.success)
-const testServerUrl = serverResult.value
+assert(serverResult !== null)
+const testServerUrl = serverResult
 
 const hashResult = createSha256("a".repeat(64))
-assert(hashResult.success)
-const testHash = hashResult.value
+assert(hashResult !== null)
+const testHash = hashResult
 
 const input = { serverUrl: testServerUrl, sha256: testHash, size: 1024, contentType: "image/png" }
 
@@ -65,19 +65,34 @@ Deno.test("checkUpload fails when the request cannot be signed", async () => {
   const result = await checkUpload(input)
 
   assert(!result.success)
-  assertEquals(result.error.tag, "SigningError")
+  assertEquals(result.error.type, "sign-failed")
 })
 
-Deno.test("checkUpload forwards timeoutMs and signal to the http client", async () => {
+Deno.test("checkUpload forwards its signal to the http client", async () => {
   const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
   const checkUpload = createCheckUpload({ signer: createFakeSigner(), httpClient: captured.client })
   const controller = new AbortController()
 
-  const result = await checkUpload({ ...input, timeoutMs: 5000, signal: controller.signal })
+  const result = await checkUpload({ ...input, signal: controller.signal })
 
   assert(result.success)
   const request = captured.requests[0]
   assert(request)
-  assertEquals(request.timeoutMs, 5000)
   assertEquals(request.signal, controller.signal)
+})
+
+Deno.test("checkUpload for the media endpoint asks HEAD /media with a media token, as BUD-05 defines", async () => {
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
+  const checkUpload = createCheckUpload({ signer: createFakeSigner(), httpClient: captured.client })
+
+  await checkUpload({ ...input, endpoint: "media" })
+
+  const request = captured.requests[0]
+  assert(request)
+  const token = parseBlossomAuthHeader(request.headers?.Authorization ?? "")
+  assert(token.success)
+  assertEquals(
+    [request.method, request.url, token.value.tags.filter((tag) => tag[0] === "t")],
+    ["HEAD", "https://blossom.example.com/media", [["t", "media"]]],
+  )
 })

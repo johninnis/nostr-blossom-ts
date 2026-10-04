@@ -1,20 +1,21 @@
 import { assertEquals } from "@std/assert"
 import { createLocalSigner, generateSecretKey } from "@innis/nostr-core"
 import { createDeleteFromServers } from "../../src/application/delete-from-servers.ts"
-import { adaptSigner } from "../../src/infrastructure/signer-adapter.ts"
 import { createInMemoryBlossomNetwork } from "../../testing.ts"
 
 const localSigner = createLocalSigner(generateSecretKey())
-const signer = adaptSigner(localSigner)
-const pubkey = await localSigner.getPublicKey()
+const signer = localSigner
+const localPubkey = await localSigner.getPublicKey()
+if (!localPubkey.success) throw new Error("a local signer always has its key")
+const pubkey = localPubkey.value
 const data = new TextEncoder().encode("file-content")
 
 Deno.test("deleteFromServers deletes the blob from every server", async () => {
   const network = createInMemoryBlossomNetwork()
   const first = network.createServer("https://one.example.com")
   const second = network.createServer("https://two.example.com")
-  const descriptor = await first.seedBlob({ data, pubkey })
-  await second.seedBlob({ data, pubkey })
+  const descriptor = first.seedBlob({ data, pubkey })
+  second.seedBlob({ data, pubkey })
   const deleteFromServers = createDeleteFromServers({ signer, httpClient: network.httpClient })
 
   const outcomes = await deleteFromServers({ servers: [first.url, second.url], sha256: descriptor.sha256 })
@@ -32,8 +33,8 @@ Deno.test("deleteFromServers reports each server's outcome rather than stopping 
   const first = network.createServer("https://one.example.com")
   const down = network.createServer("https://two.example.com")
   const third = network.createServer("https://three.example.com")
-  const descriptor = await first.seedBlob({ data, pubkey })
-  await third.seedBlob({ data, pubkey })
+  const descriptor = first.seedBlob({ data, pubkey })
+  third.seedBlob({ data, pubkey })
   down.setUnreachable(true)
   const deleteFromServers = createDeleteFromServers({ signer, httpClient: network.httpClient })
 
@@ -53,7 +54,7 @@ Deno.test("deleteFromServers reports each server's outcome rather than stopping 
 Deno.test("deleteFromServers resolves to no outcomes for no servers", async () => {
   const network = createInMemoryBlossomNetwork()
   const first = network.createServer("https://one.example.com")
-  const descriptor = await first.seedBlob({ data, pubkey })
+  const descriptor = first.seedBlob({ data, pubkey })
   const deleteFromServers = createDeleteFromServers({ signer, httpClient: network.httpClient })
 
   const outcomes = await deleteFromServers({ servers: [], sha256: descriptor.sha256 })

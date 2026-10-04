@@ -2,16 +2,16 @@ import { assert, assertEquals } from "@std/assert"
 import { now } from "@innis/nostr-core"
 import { createUnsignedReportEvent } from "../../src/domain/report.ts"
 import { createSha256 } from "../../src/domain/blob.ts"
-import { REPORT_EVENT_KIND } from "../../src/domain/types.ts"
+import { KIND_REPORTING } from "@innis/nostr-core"
 
 const hashResult = createSha256("a".repeat(64))
-assert(hashResult.success)
-const testHash = hashResult.value
+assert(hashResult !== null)
+const testHash = hashResult
 
 Deno.test("createUnsignedReportEvent builds a NIP-56 kind 1984 event", () => {
   const event = createUnsignedReportEvent({ sha256: testHash, reportType: "illegal", reason: "stolen" })
 
-  assertEquals(event.kind, REPORT_EVENT_KIND)
+  assertEquals(event.kind, KIND_REPORTING)
   assertEquals(event.content, "stolen")
   assert(event.created_at <= now())
 })

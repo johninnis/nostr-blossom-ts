@@ -1,7 +1,4 @@
-import type { Result } from "@innis/nostr-core"
-import { failure, ok } from "@innis/nostr-core"
 import { createServerUrl, createSha256 } from "./blob.ts"
-import { ValidationError } from "./errors.ts"
 import type { ServerUrl, Sha256 } from "./types.ts"
 
 interface BlobPath {
@@ -15,7 +12,7 @@ const parseBlobPath = (url: string): BlobPath | null => {
   for (const segment of parsed.pathname.split("/").toReversed()) {
     const [name, ...rest] = segment.split(".")
     const sha256 = createSha256(name ?? "")
-    if (sha256.success) return { sha256: sha256.value, extension: rest.join(".") }
+    if (sha256 !== null) return { sha256, extension: rest.join(".") }
   }
   return null
 }
@@ -33,14 +30,11 @@ export const buildBlobUrl = (serverUrl: ServerUrl, sha256: Sha256, extension?: s
 /**
  * Extract the {@link Sha256} a Blossom URL addresses: the last path segment whose name (before any
  * file extension) is a 64-character hex hash, per BUD-03's rule for locating a blob's hash in a URL
- * so it can be fetched from alternative servers. Returns a `ValidationError` failure when the URL is
- * unparseable or no path segment carries a hash. This is the single validated URL → hash path — use
+ * so it can be fetched from alternative servers. Returns `null` when the URL is unparseable or no path
+ * segment carries a hash. This is the single validated URL → hash path — use
  * it instead of pattern-matching URLs by hand.
  */
-export const extractSha256FromUrl = (url: string): Result<Sha256, ValidationError> => {
-  const path = parseBlobPath(url)
-  return path !== null ? ok(path.sha256) : failure(new ValidationError("URL carries no SHA-256 path segment"))
-}
+export const extractSha256FromUrl = (url: string): Sha256 | null => parseBlobPath(url)?.sha256 ?? null
 
 /**
  * The ordered, deduplicated list of URLs a blob may be fetched from (BUD-03 fallback): the original
@@ -52,7 +46,7 @@ export const buildFallbackUrls = (url: string, servers: ReadonlyArray<ServerUrl>
   const path = parseBlobPath(url)
   if (path === null) return [url]
   const origin = createServerUrl(URL.parse(url)?.origin ?? "")
-  const candidateServers = origin.success ? [origin.value, ...servers] : servers
+  const candidateServers = origin !== null ? [origin, ...servers] : servers
   const rebuilt = candidateServers.map((serverUrl) => buildBlobUrl(serverUrl, path.sha256, path.extension))
   return [...new Set([url, ...rebuilt])]
 }

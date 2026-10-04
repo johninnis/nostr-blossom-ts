@@ -21,13 +21,12 @@ export type {
   ReportType,
   ServerUrl,
   Sha256,
+  UploadEndpoint,
 } from "./src/domain/types.ts"
-export { BLOSSOM_AUTH_EVENT_KIND, REPORT_EVENT_KIND } from "./src/domain/types.ts"
+export { BLOSSOM_AUTH_EXPIRATION_SECONDS, createUnsignedAuthEvent } from "./src/domain/auth.ts"
 
-export type { BlossomError } from "./src/domain/errors.ts"
-export { ValidationError } from "./src/domain/errors.ts"
+export type { BlossomFailure, ValidationFailure } from "./src/domain/failure/blossom-failure.ts"
 
-export { createUnsignedAuthEvent } from "./src/domain/auth.ts"
 export { addServerTag, parseServerList, removeServerTag } from "./src/domain/server-list.ts"
 export { createUnsignedReportEvent } from "./src/domain/report.ts"
 export { buildBlobUrl, buildFallbackUrls, extractSha256FromUrl } from "./src/domain/blob-url.ts"
@@ -41,13 +40,12 @@ export {
 } from "./src/domain/blob.ts"
 
 export type { BlossomDeps, BlossomSigner } from "./src/application/ports.ts"
-export { adaptSigner } from "./src/infrastructure/signer-adapter.ts"
 
 export { createUpload } from "./src/application/upload-blob.ts"
 export { createListBlobs } from "./src/application/list-blobs.ts"
 export { createDeleteBlob } from "./src/application/delete-blob.ts"
 export { createMirrorBlob } from "./src/application/mirror-blob.ts"
-export { createGetBlob } from "./src/application/get-blob.ts"
+export { createGetBlob, DEFAULT_MAX_BLOB_BYTES } from "./src/application/get-blob.ts"
 export type { BlobResponse } from "./src/application/get-blob.ts"
 export { createHeadBlob } from "./src/application/head-blob.ts"
 export { createCheckUpload } from "./src/application/check-upload.ts"

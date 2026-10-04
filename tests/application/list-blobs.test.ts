@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert"
-import { parsePublicKey } from "@innis/nostr-core"
+import { publicKeyFixture } from "@innis/nostr-core/testing"
 import { createListBlobs } from "../../src/application/list-blobs.ts"
 import {
   createCapturingHttpClient,
@@ -10,9 +10,9 @@ import {
 import { createServerUrl } from "../../src/domain/blob.ts"
 
 const testServerUrlResult = createServerUrl("https://blossom.example.com")
-assert(testServerUrlResult.success)
-const testServerUrl = testServerUrlResult.value
-const testPubkey = parsePublicKey("b".repeat(64))
+assert(testServerUrlResult !== null)
+const testServerUrl = testServerUrlResult
+const testPubkey = publicKeyFixture("b".repeat(64))
 
 Deno.test("listBlobs returns array of descriptors", async () => {
   const descriptors = [
@@ -72,7 +72,7 @@ Deno.test("listBlobs appends the encoded query string to the path", async () => 
   )
 })
 
-Deno.test("listBlobs forwards timeoutMs and signal to the http client", async () => {
+Deno.test("listBlobs forwards its signal to the http client", async () => {
   const captured = createCapturingHttpClient(createFakeSuccessResponse(200, "[]"))
   const listBlobs = createListBlobs({ signer: createFakeSigner(), httpClient: captured.client })
   const controller = new AbortController()
@@ -80,13 +80,11 @@ Deno.test("listBlobs forwards timeoutMs and signal to the http client", async ()
   const result = await listBlobs({
     serverUrl: testServerUrl,
     pubkey: testPubkey,
-    timeoutMs: 5000,
     signal: controller.signal,
   })
 
   assert(result.success)
   const request = captured.requests[0]
   assert(request)
-  assertEquals(request.timeoutMs, 5000)
   assertEquals(request.signal, controller.signal)
 })

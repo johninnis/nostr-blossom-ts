@@ -1,11 +1,10 @@
 import { assert, assertEquals } from "@std/assert"
 import type { HttpClient } from "@innis/nostr-core"
-import { createLocalSigner, failure, generateSecretKey, ServerError } from "@innis/nostr-core"
+import { createLocalSigner, failure, generateSecretKey } from "@innis/nostr-core"
 import { createUploadWithMirrors } from "../../src/application/upload-with-mirrors.ts"
-import { adaptSigner } from "../../src/infrastructure/signer-adapter.ts"
 import { createInMemoryBlossomNetwork } from "../../testing.ts"
 
-const signer = adaptSigner(createLocalSigner(generateSecretKey()))
+const signer = createLocalSigner(generateSecretKey())
 
 const testFile = (): File => new File(["file-content"], "a.png", { type: "image/png" })
 
@@ -72,7 +71,7 @@ Deno.test("uploadWithMirrors fails on an empty server list", async () => {
   const result = await uploadWithMirrors({ servers: [], file: testFile() })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "ValidationError")
+  assertEquals(result.error.type, "validation")
 })
 
 Deno.test("uploadWithMirrors with check mirrors nothing when the primary rejects the check", async () => {
@@ -82,7 +81,7 @@ Deno.test("uploadWithMirrors with check mirrors nothing when the primary rejects
   const httpClient: HttpClient = {
     request: (request) =>
       request.method === "HEAD" && request.url === `${primary.url}/upload`
-        ? Promise.resolve(failure(new ServerError(403, "not permitted")))
+        ? Promise.resolve(failure({ type: "server", status: 403, message: "not permitted" }))
         : network.httpClient.request(request),
   }
   const uploadWithMirrors = createUploadWithMirrors({ signer, httpClient })

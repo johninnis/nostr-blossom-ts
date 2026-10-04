@@ -7,14 +7,15 @@ import {
   createFakeSuccessResponse,
 } from "../_helpers/fakes.ts"
 import { createServerUrl, createSha256 } from "../../src/domain/blob.ts"
+import type { BlossomSigner } from "../../src/application/ports.ts"
 
 const testServerUrlResult = createServerUrl("https://blossom.example.com")
-assert(testServerUrlResult.success)
-const testServerUrl = testServerUrlResult.value
+assert(testServerUrlResult !== null)
+const testServerUrl = testServerUrlResult
 
 const testHashResult = createSha256("a".repeat(64))
-assert(testHashResult.success)
-const testHash = testHashResult.value
+assert(testHashResult !== null)
+const testHash = testHashResult
 
 Deno.test("deleteBlob succeeds on 200", async () => {
   const httpClient = createFakeHttpClient(
@@ -27,7 +28,7 @@ Deno.test("deleteBlob succeeds on 200", async () => {
   assert(result.success)
 })
 
-Deno.test("deleteBlob returns server error on 403", async () => {
+Deno.test("deleteBlob returns a server failure on 403", async () => {
   const httpClient = createFakeHttpClient(
     createFakeSuccessResponse(403, "Not authorised", { "x-reason": "Not authorised" }),
   )
@@ -36,10 +37,10 @@ Deno.test("deleteBlob returns server error on 403", async () => {
   const result = await deleteBlob({ serverUrl: testServerUrl, sha256: testHash })
 
   assert(!result.success)
-  assertEquals(result.error.tag, "ServerError")
+  assertEquals(result.error.type, "server")
 })
 
-Deno.test("deleteBlob forwards timeoutMs and signal to the http client", async () => {
+Deno.test("deleteBlob forwards its signal to the http client", async () => {
   const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
   const deleteBlob = createDeleteBlob({ signer: createFakeSigner(), httpClient: captured.client })
   const controller = new AbortController()
@@ -47,13 +48,24 @@ Deno.test("deleteBlob forwards timeoutMs and signal to the http client", async (
   const result = await deleteBlob({
     serverUrl: testServerUrl,
     sha256: testHash,
-    timeoutMs: 5000,
     signal: controller.signal,
   })
 
   assert(result.success)
   const request = captured.requests[0]
   assert(request)
-  assertEquals(request.timeoutMs, 5000)
   assertEquals(request.signal, controller.signal)
+})
+
+Deno.test("deleteBlob sends nothing and returns a validation failure when the signed proof is longer than a server reads", async () => {
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
+  const signer = createFakeSigner()
+  const oversizedSigner: BlossomSigner = {
+    signEvent: (event) => signer.signEvent({ ...event, content: "a".repeat(4096) }),
+  }
+  const deleteBlob = createDeleteBlob({ signer: oversizedSigner, httpClient: captured.client })
+
+  const result = await deleteBlob({ serverUrl: testServerUrl, sha256: testHash })
+
+  assertEquals([result.success ? null : result.error.type, captured.requests.length], ["validation", 0])
 })
