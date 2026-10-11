@@ -94,7 +94,7 @@ A user's BUD-03 server list is an ordered fallback chain, and every consumer oth
 
 1. Builds the unsigned kind 24242 auth event, with a `server` tag naming the domain of the one server the request goes to, so a token that leaks from it is useless on any other (BUD-11's tag scoping).
 2. Signs it via `BlossomSigner.signEvent` (returning the signer's `Failure` when it does not sign).
-3. Encodes `Authorization: Nostr <credentials>` via `encodeBlossomAuthHeader`, in the unpadded base64url BUD-11 specifies; a header longer than the 4096 characters a server reads is a `validation` failure, and nothing is sent.
+3. Encodes `Authorization: Nostr <credentials>` via `encodeBlossomAuthHeader`, in the unpadded base64url BUD-11 specifies; a header longer than the 8000 characters a server reads is a `validation` failure, and nothing is sent. That is the Blossom header's bound, wider than a NIP-98 header's 4096, since a Blossom token grows with the blobs it names.
 4. Calls `HttpClient.request(...)`.
 
 Every authenticated use-case goes through this. Non-2xx / transport mapping is the injected `HttpClient`'s job (see its contract above), so a use-case only ever branches on a single `if (!response.success)`. Bodies are then parsed through `parseJsonResponse` + the domain parsers — one path, no per-use-case JSON validation.

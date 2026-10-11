@@ -1,6 +1,6 @@
 {
   "name": "@innis/nostr-blossom",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publish": {
     "exclude": ["tests/", "deno.lock", ".github/"]
   },
@@ -22,7 +22,7 @@
   "imports": {
     "@std/assert": "jsr:@std/assert@^1",
     "@std/path": "jsr:@std/path@^1",
-    "@innis/nostr-core": "jsr:@innis/nostr-core@^0.4.2"
+    "@innis/nostr-core": "jsr:@innis/nostr-core@^0.5.0"
   },
   "tasks": {
     "check": "deno check mod.ts testing.ts src/ tests/ examples/",

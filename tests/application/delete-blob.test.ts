@@ -57,13 +57,23 @@ Deno.test("deleteBlob forwards its signal to the http client", async () => {
   assertEquals(request.signal, controller.signal)
 })
 
-Deno.test("deleteBlob sends nothing and returns a validation failure when the signed proof is longer than a server reads", async () => {
-  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
+const signerWithContentLength = (length: number): BlossomSigner => {
   const signer = createFakeSigner()
-  const oversizedSigner: BlossomSigner = {
-    signEvent: (event) => signer.signEvent({ ...event, content: "a".repeat(4096) }),
-  }
-  const deleteBlob = createDeleteBlob({ signer: oversizedSigner, httpClient: captured.client })
+  return { signEvent: (event) => signer.signEvent({ ...event, content: "a".repeat(length) }) }
+}
+
+Deno.test("deleteBlob sends a signed proof longer than a NIP-98 header's 4096 characters, since a Blossom server reads 8000", async () => {
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
+  const deleteBlob = createDeleteBlob({ signer: signerWithContentLength(4096), httpClient: captured.client })
+
+  await deleteBlob({ serverUrl: testServerUrl, sha256: testHash })
+
+  assertEquals(captured.requests.length, 1)
+})
+
+Deno.test("deleteBlob sends nothing and returns a validation failure when the signed proof is longer than the 8000 characters a server reads", async () => {
+  const captured = createCapturingHttpClient(createFakeSuccessResponse(200, ""))
+  const deleteBlob = createDeleteBlob({ signer: signerWithContentLength(8000), httpClient: captured.client })
 
   const result = await deleteBlob({ serverUrl: testServerUrl, sha256: testHash })
 

@@ -25,7 +25,7 @@ interface AuthorisedRequestInput {
  * unpadded base64url, and issue the HTTP request. A private address is reached only when the injected
  * `HttpClient` reaches one: signing for a server does not make it the user's own, since `get` and `head` sign for any
  * server a blob is fetched from, other users' BUD-03 servers included. A signed auth event whose header would be longer
- * than the 4096 characters a server reads is a `validation` failure, and nothing is sent.
+ * than the 8000 characters a server reads is a `validation` failure, and nothing is sent.
  */
 export const createAuthorisedRequest = (
   deps: BlossomDeps,
